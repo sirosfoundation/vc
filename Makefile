@@ -247,15 +247,38 @@ clean_docker_images:
 ci_build: docker-build docker-push
 	$(info CI Build)
 
-proto: proto-status proto-registry proto-issuer
+# Check if protoc is installed
+check-protoc:
+	@which protoc > /dev/null || (echo ""; \
+		echo "ERROR: protoc (Protocol Buffer Compiler) is not installed"; \
+		echo ""; \
+		echo "Please install protoc using one of these methods:"; \
+		echo ""; \
+		echo "Ubuntu/Debian:"; \
+		echo "  sudo apt-get update"; \
+		echo "  sudo apt-get install -y protobuf-compiler"; \
+		echo ""; \
+		echo "macOS (Homebrew):"; \
+		echo "  brew install protobuf"; \
+		echo ""; \
+		echo "Or download from: https://github.com/protocolbuffers/protobuf/releases"; \
+		echo ""; \
+		echo "After installation, also install Go plugins:"; \
+		echo "  go install google.golang.org/protobuf/cmd/protoc-gen-go@latest"; \
+		echo "  go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest"; \
+		echo ""; \
+		exit 1)
+	@protoc --version
 
-proto-registry:
+proto: check-protoc proto-status proto-registry proto-issuer
+
+proto-registry: check-protoc
 	protoc --proto_path=./proto/ --go-grpc_opt=module=vc --go-grpc_out=. --go_opt=module=vc --go_out=. ./proto/v1-registry.proto
 
-proto-status:
+proto-status: check-protoc
 	protoc --proto_path=./proto/ --go-grpc_opt=module=vc --go_opt=module=vc --go_out=. --go-grpc_out=. ./proto/v1-status-model.proto 
 
-proto-issuer:
+proto-issuer: check-protoc
 	protoc --proto_path=./proto/ --go-grpc_opt=module=vc --go_opt=module=vc --go_out=. --go-grpc_out=. ./proto/v1-issuer.proto 
 
 swagger: swagger-registry swagger-verifier swagger-apigw swagger-issuer swagger-fmt
