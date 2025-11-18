@@ -6,16 +6,19 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	apiv1_issuer "vc/internal/gen/issuer/apiv1_issuer"
 	"vc/pkg/logger"
 )
 
 // SAMLSession represents an active SAML authentication session
 type SAMLSession struct {
-	ID             string
-	CredentialType string
-	IDPEntityID    string
-	CreatedAt      time.Time
-	ExpiresAt      time.Time
+	ID                 string
+	CredentialType     string
+	CredentialConfigID string // OpenID4VCI credential configuration ID
+	IDPEntityID        string
+	JWK                *apiv1_issuer.Jwk // Optional: JWK for credential binding
+	CreatedAt          time.Time
+	ExpiresAt          time.Time
 }
 
 // SessionStore manages SAML sessions with TTL
