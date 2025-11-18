@@ -13,8 +13,7 @@ import (
 // SAMLSession represents an active SAML authentication session
 type SAMLSession struct {
 	ID                 string
-	SAMLType           string // SAML credential type (e.g., "pid") from config
-	CredentialType     string // credential_constructor type
+	CredentialType     string // Credential type identifier (e.g., "pid")
 	CredentialConfigID string // OpenID4VCI credential configuration ID
 	IDPEntityID        string
 	JWK                *apiv1_issuer.Jwk // Optional: JWK for credential binding

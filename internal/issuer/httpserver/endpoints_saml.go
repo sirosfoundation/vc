@@ -157,8 +157,8 @@ func (s *Service) endpointSAMLACS(ctx context.Context, c *gin.Context) (interfac
 		return nil, fmt.Errorf("failed to create transformer: %w", err)
 	}
 
-	// Get the mapping for this SAML type
-	mapping, err := transformer.GetMapping(session.SAMLType)
+	// Get the mapping for this credential type
+	mapping, err := transformer.GetMapping(session.CredentialType)
 	if err != nil {
 		span.SetStatus(codes.Error, "no mapping found")
 		return nil, err
@@ -174,15 +174,14 @@ func (s *Service) endpointSAMLACS(ctx context.Context, c *gin.Context) (interfac
 	}
 
 	// Transform SAML attributes to credential claims using the generic transformer
-	claims, err := transformer.TransformClaims(session.SAMLType, samlAttrs)
+	claims, err := transformer.TransformClaims(session.CredentialType, samlAttrs)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		return nil, err
 	}
 
 	s.log.Info("SAML authentication successful",
-		"saml_type", session.SAMLType,
-		"credential_type", mapping.CredentialType,
+		"credential_type", session.CredentialType,
 		"claims_count", len(claims))
 
 	// Marshal claims to JSON for the credential

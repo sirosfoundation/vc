@@ -48,15 +48,16 @@ issuer:
     # Metadata cache TTL in seconds (default: 86400 = 24 hours)
     metadata_cache_ttl: 86400
     
-    # Credential mappings - defines how SAML credential types map to credential_constructor
-    # Each mapping connects a SAML credential type to its issuer configuration
-    attribute_mappings:
+    # Credential mappings - defines how to issue different credential types via SAML
+    # Key: credential type identifier (used in API requests, matches credential_constructor key)
+    # Value: mapping configuration for that credential type
+    credential_mappings:
       # Person Identification Data (PID)
-      - saml_type: "pid"  # Identifier used in SAML requests
-        credential_type: "pid"  # Key in credential_constructor config
+      pid:
         credential_config_id: "urn:eudi:pid:1"  # OpenID4VCI configuration ID
         default_idp: "https://idp.swamid.se/idp"
         attributes:
+          # Maps SAML attribute OIDs to credential claims
           "urn:oid:2.5.4.42":  # givenName
             claim: "identity.given_name"
             required: true
@@ -79,8 +80,7 @@ issuer:
             default: "SE"
       
       # Education Diploma Credential
-      - saml_type: "diploma"
-        credential_type: "diploma"
+      diploma:
         credential_config_id: "urn:eudi:diploma:1"
         default_idp: "https://idp.university.se/idp"
         attributes:
@@ -108,8 +108,7 @@ issuer:
             transform: "lowercase"
       
       # European Health Insurance Card (EHIC)
-      - saml_type: "ehic"
-        credential_type: "ehic"
+      ehic:
         credential_config_id: "urn:eudi:ehic:1"
         default_idp: "https://idp.healthprovider.se/idp"
         attributes:

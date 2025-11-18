@@ -54,7 +54,6 @@ func (s *Service) MapToClaims(ctx context.Context, assertion *Assertion, credent
 // SAMLSession stub type
 type SAMLSession struct {
 	ID                 string
-	SAMLType           string
 	CredentialType     string
 	CredentialConfigID string
 	IDPEntityID        string

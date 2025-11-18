@@ -7,7 +7,8 @@ import (
 	"strings"
 )
 
-// AttributeMapping defines how a SAML attribute maps to a credential claim
+// AttributeMapping defines how an external attribute maps to a credential claim
+// Protocol-agnostic - works for SAML OIDs, OIDC claim names, etc.
 type AttributeMapping struct {
 	Claim     string // Dot-notation path: "identity.family_name" or simple "family_name"
 	Required  bool   // Whether this attribute is required
@@ -15,45 +16,44 @@ type AttributeMapping struct {
 	Default   string // Optional default value if attribute is missing
 }
 
-// CredentialMapping defines how a SAML credential type maps to a credential constructor
+// CredentialMapping defines how to issue a specific credential type
+// Protocol-agnostic - credential type is the identifier, not tied to SAML
 type CredentialMapping struct {
-	SAMLType           string                       // SAML credential type identifier (e.g., "pid")
-	CredentialType     string                       // Key in credential_constructor config
+	CredentialType     string                       // Credential type identifier (e.g., "pid")
 	CredentialConfigID string                       // OpenID4VCI credential configuration ID
-	Attributes         map[string]*AttributeMapping // OID → AttributeMapping
+	Attributes         map[string]*AttributeMapping // Attribute identifier → AttributeMapping
+	DefaultIdP         string                       // Optional default IdP
 }
 
-// ClaimTransformer transforms SAML attributes into credential claims
+// ClaimTransformer transforms external attributes into credential claims
+// Protocol-agnostic - works for SAML, OIDC, or other attribute sources
 type ClaimTransformer struct {
-	mappings map[string]*CredentialMapping
+	mappings map[string]*CredentialMapping // credential type → mapping
 }
 
-// NewClaimTransformer creates a new claim transformer
-func NewClaimTransformer(mappings []*CredentialMapping) *ClaimTransformer {
-	m := make(map[string]*CredentialMapping)
-	for _, mapping := range mappings {
-		m[mapping.SAMLType] = mapping
-	}
+// NewClaimTransformer creates a new claim transformer from a map of credential mappings
+func NewClaimTransformer(mappings map[string]*CredentialMapping) *ClaimTransformer {
 	return &ClaimTransformer{
-		mappings: m,
+		mappings: mappings,
 	}
 }
 
-// GetMapping returns the credential mapping for a SAML type
-func (t *ClaimTransformer) GetMapping(samlType string) (*CredentialMapping, error) {
-	mapping, exists := t.mappings[samlType]
+// GetMapping returns the credential mapping for a credential type
+func (t *ClaimTransformer) GetMapping(credentialType string) (*CredentialMapping, error) {
+	mapping, exists := t.mappings[credentialType]
 	if !exists {
-		return nil, fmt.Errorf("unknown SAML credential type: %s", samlType)
+		return nil, fmt.Errorf("unknown credential type: %s", credentialType)
 	}
 	return mapping, nil
 }
 
-// TransformClaims converts SAML attributes to a generic document structure
+// TransformClaims converts external attributes to a generic document structure
+// Protocol-agnostic - attributes can come from SAML, OIDC, or other sources
 func (t *ClaimTransformer) TransformClaims(
-	samlType string,
+	credentialType string,
 	attributes map[string]interface{},
 ) (map[string]interface{}, error) {
-	mapping, err := t.GetMapping(samlType)
+	mapping, err := t.GetMapping(credentialType)
 	if err != nil {
 		return nil, err
 	}

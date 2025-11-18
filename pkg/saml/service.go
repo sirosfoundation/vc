@@ -25,7 +25,6 @@ type Service struct {
 	cfg          *model.SAMLConfig
 	sp           *saml.ServiceProvider
 	mdqClient    *MDQClient
-	mapper       *AttributeMapper
 	sessionStore *SessionStore
 	log          *logger.Log
 }
@@ -84,9 +83,6 @@ func New(ctx context.Context, cfg *model.SAMLConfig, log *logger.Log) (*Service,
 	// Initialize MDQ client
 	s.mdqClient = NewMDQClient(cfg.MDQServer, cfg.MetadataCacheTTL, s.log)
 
-	// Initialize attribute mapper
-	s.mapper = NewAttributeMapper(cfg.AttributeMappings, s.log)
-
 	// Initialize session store
 	sessionDuration := cfg.SessionDuration
 	if sessionDuration == 0 {
@@ -117,27 +113,17 @@ type AuthRequest struct {
 }
 
 // InitiateAuth initiates a SAML authentication flow
-func (s *Service) InitiateAuth(ctx context.Context, idpEntityID, samlType string) (*AuthRequest, error) {
+func (s *Service) InitiateAuth(ctx context.Context, idpEntityID, credentialType string) (*AuthRequest, error) {
 	// Fetch IdP metadata via MDQ
 	idpMetadata, err := s.mdqClient.GetIDPMetadata(ctx, idpEntityID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get IdP metadata: %w", err)
 	}
 
-	// Validate SAML type and get credential mapping
-	if !s.mapper.IsValidCredentialType(samlType) {
-		return nil, fmt.Errorf("unsupported SAML type: %s", samlType)
-	}
-
-	// Get credential type and config ID from mapper
-	credentialType, ok := s.mapper.GetCredentialType(samlType)
-	if !ok {
-		return nil, fmt.Errorf("no credential type mapping found for SAML type: %s", samlType)
-	}
-
-	credentialConfigID, ok := s.mapper.GetCredentialConfigID(samlType)
-	if !ok {
-		return nil, fmt.Errorf("no credential config ID mapping found for SAML type: %s", samlType)
+	// Validate credential type exists in configuration
+	credMapping, exists := s.cfg.CredentialMappings[credentialType]
+	if !exists {
+		return nil, fmt.Errorf("unsupported credential type: %s", credentialType)
 	}
 
 	// Create authentication request
@@ -153,9 +139,8 @@ func (s *Service) InitiateAuth(ctx context.Context, idpEntityID, samlType string
 	// Store session
 	session := &SAMLSession{
 		ID:                 req.ID,
-		SAMLType:           samlType,
 		CredentialType:     credentialType,
-		CredentialConfigID: credentialConfigID,
+		CredentialConfigID: credMapping.CredentialConfigID,
 		IDPEntityID:        idpEntityID,
 		CreatedAt:          time.Now(),
 	}
@@ -232,19 +217,6 @@ func (s *Service) ProcessAssertion(ctx context.Context, samlResponseEncoded stri
 	}, nil
 }
 
-// MapToClaims maps SAML assertion attributes to credential claims
-func (s *Service) MapToClaims(ctx context.Context, assertion *Assertion, credentialType string) (map[string]interface{}, error) {
-	claims, err := s.mapper.MapAttributes(assertion.Attributes, credentialType)
-	if err != nil {
-		return nil, fmt.Errorf("failed to map attributes: %w", err)
-	}
-
-	// Add subject (NameID) to claims
-	claims["sub"] = assertion.NameID
-
-	return claims, nil
-}
-
 // GetSession retrieves a session by ID
 func (s *Service) GetSession(sessionID string) (*SAMLSession, error) {
 	return s.sessionStore.Get(sessionID)
@@ -276,14 +248,15 @@ func BuildTransformer(cfg *model.SAMLConfig) (*ClaimTransformer, error) {
 		return nil, fmt.Errorf("SAML not enabled")
 	}
 
-	mappings := make([]*CredentialMapping, 0, len(cfg.AttributeMappings))
+	// Convert config mappings to transformer format
+	mappings := make(map[string]*CredentialMapping, len(cfg.CredentialMappings))
 
-	for _, attrMapping := range cfg.AttributeMappings {
+	for credentialType, credMapping := range cfg.CredentialMappings {
 		// Convert config attribute mappings to transformer format
 		attributes := make(map[string]*AttributeMapping)
 
-		for oid, attrCfg := range attrMapping.Attributes {
-			attributes[oid] = &AttributeMapping{
+		for attrID, attrCfg := range credMapping.Attributes {
+			attributes[attrID] = &AttributeMapping{
 				Claim:     attrCfg.Claim,
 				Required:  attrCfg.Required,
 				Transform: attrCfg.Transform,
@@ -291,12 +264,12 @@ func BuildTransformer(cfg *model.SAMLConfig) (*ClaimTransformer, error) {
 			}
 		}
 
-		mappings = append(mappings, &CredentialMapping{
-			SAMLType:           attrMapping.SAMLType,
-			CredentialType:     attrMapping.CredentialType,
-			CredentialConfigID: attrMapping.CredentialConfigID,
+		mappings[credentialType] = &CredentialMapping{
+			CredentialType:     credentialType,
+			CredentialConfigID: credMapping.CredentialConfigID,
 			Attributes:         attributes,
-		})
+			DefaultIdP:         credMapping.DefaultIdP,
+		}
 	}
 
 	return NewClaimTransformer(mappings), nil

@@ -146,42 +146,38 @@ type SAMLConfig struct {
 	// SessionDuration in seconds (default: 3600)
 	SessionDuration int `yaml:"session_duration"`
 
-	// AttributeMappings defines how SAML attributes map to credential claims
-	AttributeMappings []SAMLAttributeMapping `yaml:"attribute_mappings" validate:"required_if=Enabled true"`
+	// CredentialMappings defines how to map external attributes to credential claims
+	// Key: credential type identifier (e.g., "pid", "diploma")
+	// Maps to credential_constructor keys and OpenID4VCI credential_configuration_ids
+	CredentialMappings map[string]CredentialMapping `yaml:"credential_mappings" validate:"required_if=Enabled true"`
 
 	// MetadataCacheTTL in seconds (default: 3600) - how long to cache IdP metadata from MDQ
 	MetadataCacheTTL int `yaml:"metadata_cache_ttl"`
 }
 
-// SAMLAttributeMapping defines attribute-to-claim mapping for a specific credential type
-type SAMLAttributeMapping struct {
-	// SAMLType is the identifier used when requesting this credential type via SAML
-	// Example: "pid", "diploma", "ehic"
-	SAMLType string `yaml:"saml_type" validate:"required"`
-
-	// CredentialType identifies the key in credential_constructor config
-	// Example: "pid" maps to credential_constructor["pid"]
-	CredentialType string `yaml:"credential_type" validate:"required"`
-
+// CredentialMapping defines how to issue a specific credential type via SAML
+// The credential type identifier (map key) is used in API requests and session state
+type CredentialMapping struct {
 	// CredentialConfigID is the OpenID4VCI credential configuration identifier
 	// Example: "urn:eudi:pid:1"
 	CredentialConfigID string `yaml:"credential_config_id" validate:"required"`
 
-	// Attributes maps SAML attribute OIDs to claim paths with additional metadata
+	// Attributes maps SAML attribute OIDs to claim paths with transformation rules
 	// Example: "urn:oid:2.5.4.42" -> {claim: "identity.given_name", required: true}
-	Attributes map[string]SAMLAttributeConfig `yaml:"attributes" validate:"required"`
+	Attributes map[string]AttributeConfig `yaml:"attributes" validate:"required"`
 
 	// DefaultIdP is the optional default IdP entityID for this credential type
 	DefaultIdP string `yaml:"default_idp,omitempty"`
 }
 
-// SAMLAttributeConfig defines how a single SAML attribute maps to a credential claim
-type SAMLAttributeConfig struct {
+// AttributeConfig defines how a single external attribute maps to a credential claim
+// Generic across protocols (SAML, OIDC, etc.) - uses protocol-specific identifiers as keys
+type AttributeConfig struct {
 	// Claim is the target claim name (supports dot-notation for nesting)
 	// Example: "given_name" or "identity.given_name"
 	Claim string `yaml:"claim" validate:"required"`
 
-	// Required indicates if this attribute must be present in SAML assertion
+	// Required indicates if this attribute must be present in the assertion/response
 	Required bool `yaml:"required"`
 
 	// Transform is an optional transformation to apply

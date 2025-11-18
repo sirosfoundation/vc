@@ -9,9 +9,8 @@ import (
 )
 
 func TestNewClaimTransformer(t *testing.T) {
-	mappings := []*CredentialMapping{
-		{
-			SAMLType:           "pid",
+	mappings := map[string]*CredentialMapping{
+		"pid": {
 			CredentialType:     "pid",
 			CredentialConfigID: "urn:eudi:pid:1",
 			Attributes: map[string]*AttributeMapping{
@@ -26,9 +25,8 @@ func TestNewClaimTransformer(t *testing.T) {
 }
 
 func TestGetMapping(t *testing.T) {
-	mappings := []*CredentialMapping{
-		{
-			SAMLType:       "pid",
+	mappings := map[string]*CredentialMapping{
+		"pid": {
 			CredentialType: "pid",
 			Attributes:     map[string]*AttributeMapping{},
 		},
@@ -40,18 +38,17 @@ func TestGetMapping(t *testing.T) {
 	mapping, err := transformer.GetMapping("pid")
 	assert.NoError(t, err)
 	assert.NotNil(t, mapping)
-	assert.Equal(t, "pid", mapping.SAMLType)
+	assert.Equal(t, "pid", mapping.CredentialType)
 
 	// Test non-existent mapping
 	_, err = transformer.GetMapping("unknown")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown SAML credential type")
+	assert.Contains(t, err.Error(), "unknown credential type")
 }
 
 func TestTransformClaims_SimpleMapping(t *testing.T) {
-	mappings := []*CredentialMapping{
-		{
-			SAMLType:       "pid",
+	mappings := map[string]*CredentialMapping{
+		"pid": {
 			CredentialType: "pid",
 			Attributes: map[string]*AttributeMapping{
 				"urn:oid:2.5.4.42": {Claim: "given_name", Required: true},
@@ -75,9 +72,8 @@ func TestTransformClaims_SimpleMapping(t *testing.T) {
 }
 
 func TestTransformClaims_NestedMapping(t *testing.T) {
-	mappings := []*CredentialMapping{
-		{
-			SAMLType:       "pid",
+	mappings := map[string]*CredentialMapping{
+		"pid": {
 			CredentialType: "pid",
 			Attributes: map[string]*AttributeMapping{
 				"urn:oid:2.5.4.42": {Claim: "identity.given_name", Required: true},
@@ -111,9 +107,8 @@ func TestTransformClaims_NestedMapping(t *testing.T) {
 }
 
 func TestTransformClaims_RequiredAttributeMissing(t *testing.T) {
-	mappings := []*CredentialMapping{
-		{
-			SAMLType:       "pid",
+	mappings := map[string]*CredentialMapping{
+		"pid": {
 			CredentialType: "pid",
 			Attributes: map[string]*AttributeMapping{
 				"urn:oid:2.5.4.42": {Claim: "given_name", Required: true},
@@ -135,9 +130,8 @@ func TestTransformClaims_RequiredAttributeMissing(t *testing.T) {
 }
 
 func TestTransformClaims_OptionalAttributeMissing(t *testing.T) {
-	mappings := []*CredentialMapping{
-		{
-			SAMLType:       "pid",
+	mappings := map[string]*CredentialMapping{
+		"pid": {
 			CredentialType: "pid",
 			Attributes: map[string]*AttributeMapping{
 				"urn:oid:2.5.4.42": {Claim: "given_name", Required: true},
@@ -161,9 +155,8 @@ func TestTransformClaims_OptionalAttributeMissing(t *testing.T) {
 }
 
 func TestTransformClaims_DefaultValue(t *testing.T) {
-	mappings := []*CredentialMapping{
-		{
-			SAMLType:       "pid",
+	mappings := map[string]*CredentialMapping{
+		"pid": {
 			CredentialType: "pid",
 			Attributes: map[string]*AttributeMapping{
 				"urn:oid:2.5.4.42": {Claim: "given_name", Required: true},
@@ -213,9 +206,8 @@ func TestApplyTransform_UnknownTransform(t *testing.T) {
 }
 
 func TestTransformClaims_WithTransformations(t *testing.T) {
-	mappings := []*CredentialMapping{
-		{
-			SAMLType:       "pid",
+	mappings := map[string]*CredentialMapping{
+		"pid": {
 			CredentialType: "pid",
 			Attributes: map[string]*AttributeMapping{
 				"urn:oid:0.9.2342.19200300.100.1.3": {
@@ -354,9 +346,8 @@ func TestGetNestedValue_EmptyPath(t *testing.T) {
 
 func TestTransformClaims_ComplexRealWorld(t *testing.T) {
 	// Simulate a real-world PID credential with nested identity structure
-	mappings := []*CredentialMapping{
-		{
-			SAMLType:           "pid",
+	mappings := map[string]*CredentialMapping{
+		"pid": {
 			CredentialType:     "pid",
 			CredentialConfigID: "urn:eudi:pid:1",
 			Attributes: map[string]*AttributeMapping{

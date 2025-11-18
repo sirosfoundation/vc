@@ -11,20 +11,15 @@ import (
 // AttributeMapper handles mapping between SAML attributes and credential claims
 // DEPRECATED: Use ClaimTransformer instead for new implementations
 type AttributeMapper struct {
-	mappings map[string]model.SAMLAttributeMapping
+	mappings map[string]model.CredentialMapping
 	log      *logger.Log
 }
 
 // NewAttributeMapper creates a new attribute mapper
 // DEPRECATED: Use BuildTransformer() and ClaimTransformer instead
-func NewAttributeMapper(mappings []model.SAMLAttributeMapping, log *logger.Log) *AttributeMapper {
-	mappingMap := make(map[string]model.SAMLAttributeMapping)
-	for _, mapping := range mappings {
-		mappingMap[mapping.SAMLType] = mapping
-	}
-
+func NewAttributeMapper(mappings map[string]model.CredentialMapping, log *logger.Log) *AttributeMapper {
 	return &AttributeMapper{
-		mappings: mappingMap,
+		mappings: mappings,
 		log:      log.New("mapper"),
 	}
 }
@@ -100,18 +95,20 @@ func (m *AttributeMapper) GetSupportedCredentialTypes() []string {
 	return types
 }
 
-// GetCredentialType returns the credential_constructor key for a SAML type
-func (m *AttributeMapper) GetCredentialType(samlType string) (string, bool) {
-	mapping, ok := m.mappings[samlType]
+// GetCredentialType returns the credential type (which is now the map key)
+// DEPRECATED: The credential type is already known from the request
+func (m *AttributeMapper) GetCredentialType(credentialType string) (string, bool) {
+	_, ok := m.mappings[credentialType]
 	if !ok {
 		return "", false
 	}
-	return mapping.CredentialType, true
+	// The credential type IS the key in the map
+	return credentialType, true
 }
 
-// GetCredentialConfigID returns the OpenID4VCI config ID for a SAML type
-func (m *AttributeMapper) GetCredentialConfigID(samlType string) (string, bool) {
-	mapping, ok := m.mappings[samlType]
+// GetCredentialConfigID returns the OpenID4VCI config ID for a credential type
+func (m *AttributeMapper) GetCredentialConfigID(credentialType string) (string, bool) {
+	mapping, ok := m.mappings[credentialType]
 	if !ok {
 		return "", false
 	}
