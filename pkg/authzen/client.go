@@ -1,7 +1,31 @@
 //go:build vc20
 
-// Package authzen implements a client for draft-johansson-authzen-trust protocol
-// This provides trust evaluation for name-to-key bindings via AuthZEN
+// Package authzen implements a client for draft-johansson-authzen-trust protocol.
+// This provides trust evaluation for name-to-key bindings via AuthZEN.
+//
+// Deprecated: This package is deprecated in favor of github.com/SUNET/go-trust/pkg/authzenclient.
+// The go-trust package provides additional features including:
+//   - Discovery via .well-known/authzen-configuration endpoint
+//   - Resolution-only requests for DID document retrieval
+//   - Better error handling and context support
+//   - Support for both JWK and X.509 certificate evaluation
+//
+// Migration guide:
+//
+//	// Old code:
+//	client := authzen.NewClient("https://pdp.example.com")
+//	decision, err := client.EvaluateJWK(subjectID, jwk, role)
+//
+//	// New code:
+//	import "github.com/SUNET/go-trust/pkg/authzenclient"
+//	client := authzenclient.New("https://pdp.example.com")
+//	resp, err := client.EvaluateJWK(ctx, subjectID, jwk, &authzen.Action{Name: role})
+//	decision := resp.Decision
+//
+// For key resolution, use the pkg/keyresolver package with GoTrustResolver:
+//
+//	resolver := keyresolver.NewGoTrustResolver("https://pdp.example.com")
+//	key, err := resolver.ResolveEd25519("did:web:example.com#key-1")
 package authzen
 
 import (

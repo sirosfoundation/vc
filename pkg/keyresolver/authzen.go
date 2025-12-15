@@ -3,10 +3,15 @@
 package keyresolver
 
 import (
+	"context"
+	"crypto/ecdsa"
 	"crypto/ed25519"
 	"fmt"
 
-	"vc/pkg/authzen"
+	"github.com/SUNET/go-trust/pkg/authzen"
+	"github.com/SUNET/go-trust/pkg/authzenclient"
+
+	localAuthzen "vc/pkg/authzen"
 )
 
 // TrustEvaluator validates whether a resolved key should be trusted
@@ -17,22 +22,113 @@ type TrustEvaluator interface {
 	EvaluateTrust(subjectID string, publicKey ed25519.PublicKey, role string) (bool, error)
 }
 
-// AuthZENTrustEvaluator uses the AuthZEN Trust protocol for trust evaluation
-type AuthZENTrustEvaluator struct {
-	client *authzen.Client
+// ECDSATrustEvaluator extends TrustEvaluator with ECDSA support
+type ECDSATrustEvaluator interface {
+	TrustEvaluator
+	// EvaluateTrustECDSA checks if the given ECDSA public key is authorized
+	EvaluateTrustECDSA(subjectID string, publicKey *ecdsa.PublicKey, role string) (bool, error)
 }
 
-// NewAuthZENTrustEvaluator creates a trust evaluator using AuthZEN protocol
-func NewAuthZENTrustEvaluator(baseURL string) *AuthZENTrustEvaluator {
-	return &AuthZENTrustEvaluator{
-		client: authzen.NewClient(baseURL),
+// GoTrustEvaluator uses go-trust authzenclient for trust evaluation.
+// This is the recommended implementation for new code.
+type GoTrustEvaluator struct {
+	client *authzenclient.Client
+}
+
+// NewGoTrustEvaluator creates a trust evaluator using go-trust authzenclient.
+func NewGoTrustEvaluator(baseURL string) *GoTrustEvaluator {
+	return &GoTrustEvaluator{
+		client: authzenclient.New(baseURL),
 	}
 }
 
-// EvaluateTrust validates the name-to-key binding via AuthZEN
+// NewGoTrustEvaluatorWithDiscovery creates a trust evaluator using AuthZEN discovery.
+func NewGoTrustEvaluatorWithDiscovery(ctx context.Context, baseURL string) (*GoTrustEvaluator, error) {
+	client, err := authzenclient.Discover(ctx, baseURL)
+	if err != nil {
+		return nil, fmt.Errorf("authzen discovery failed: %w", err)
+	}
+	return &GoTrustEvaluator{client: client}, nil
+}
+
+// NewGoTrustEvaluatorWithClient creates a trust evaluator with an existing client.
+func NewGoTrustEvaluatorWithClient(client *authzenclient.Client) *GoTrustEvaluator {
+	return &GoTrustEvaluator{client: client}
+}
+
+// EvaluateTrust validates the name-to-key binding via go-trust authzenclient.
+func (g *GoTrustEvaluator) EvaluateTrust(subjectID string, publicKey ed25519.PublicKey, role string) (bool, error) {
+	ctx := context.Background()
+	return g.EvaluateTrustWithContext(ctx, subjectID, publicKey, role)
+}
+
+// EvaluateTrustWithContext validates trust with a provided context.
+func (g *GoTrustEvaluator) EvaluateTrustWithContext(ctx context.Context, subjectID string, publicKey ed25519.PublicKey, role string) (bool, error) {
+	jwk := Ed25519ToJWK(publicKey)
+
+	var action *authzen.Action
+	if role != "" {
+		action = &authzen.Action{Name: role}
+	}
+
+	resp, err := g.client.EvaluateJWK(ctx, subjectID, jwk, action)
+	if err != nil {
+		return false, fmt.Errorf("trust evaluation failed: %w", err)
+	}
+
+	return resp.Decision, nil
+}
+
+// EvaluateTrustECDSA validates an ECDSA key binding.
+func (g *GoTrustEvaluator) EvaluateTrustECDSA(subjectID string, publicKey *ecdsa.PublicKey, role string) (bool, error) {
+	ctx := context.Background()
+	return g.EvaluateTrustECDSAWithContext(ctx, subjectID, publicKey, role)
+}
+
+// EvaluateTrustECDSAWithContext validates an ECDSA key with context.
+func (g *GoTrustEvaluator) EvaluateTrustECDSAWithContext(ctx context.Context, subjectID string, publicKey *ecdsa.PublicKey, role string) (bool, error) {
+	jwk, err := ECDSAToJWK(publicKey)
+	if err != nil {
+		return false, fmt.Errorf("failed to convert ECDSA key to JWK: %w", err)
+	}
+
+	var action *authzen.Action
+	if role != "" {
+		action = &authzen.Action{Name: role}
+	}
+
+	resp, err := g.client.EvaluateJWK(ctx, subjectID, jwk, action)
+	if err != nil {
+		return false, fmt.Errorf("trust evaluation failed: %w", err)
+	}
+
+	return resp.Decision, nil
+}
+
+// GetClient returns the underlying authzenclient.Client.
+func (g *GoTrustEvaluator) GetClient() *authzenclient.Client {
+	return g.client
+}
+
+// AuthZENTrustEvaluator uses the local AuthZEN client for trust evaluation.
+// Deprecated: Use GoTrustEvaluator instead, which provides more features
+// including discovery and better error handling.
+type AuthZENTrustEvaluator struct {
+	client *localAuthzen.Client
+}
+
+// NewAuthZENTrustEvaluator creates a trust evaluator using local AuthZEN client.
+// Deprecated: Use NewGoTrustEvaluator instead.
+func NewAuthZENTrustEvaluator(baseURL string) *AuthZENTrustEvaluator {
+	return &AuthZENTrustEvaluator{
+		client: localAuthzen.NewClient(baseURL),
+	}
+}
+
+// EvaluateTrust validates the name-to-key binding via local AuthZEN client.
 func (a *AuthZENTrustEvaluator) EvaluateTrust(subjectID string, publicKey ed25519.PublicKey, role string) (bool, error) {
 	// Convert Ed25519 public key to JWK format for AuthZEN evaluation
-	jwk := authzen.JWKFromEd25519(publicKey)
+	jwk := localAuthzen.JWKFromEd25519(publicKey)
 
 	decision, err := a.client.EvaluateJWK(subjectID, jwk, role)
 	if err != nil {
@@ -42,8 +138,9 @@ func (a *AuthZENTrustEvaluator) EvaluateTrust(subjectID string, publicKey ed2551
 	return decision, nil
 }
 
-// GetClient returns the underlying AuthZEN client for advanced usage
-func (a *AuthZENTrustEvaluator) GetClient() *authzen.Client {
+// GetClient returns the underlying local AuthZEN client for advanced usage.
+// Deprecated: Use GoTrustEvaluator.GetClient() instead.
+func (a *AuthZENTrustEvaluator) GetClient() *localAuthzen.Client {
 	return a.client
 }
 
@@ -81,6 +178,37 @@ func (v *ValidatingResolver) ResolveEd25519(verificationMethod string) (ed25519.
 	if !trusted {
 		return nil, fmt.Errorf("key not trusted for %s", verificationMethod)
 	}
+
+	return key, nil
+}
+
+// ResolveECDSA resolves an ECDSA key and validates trust if possible.
+func (v *ValidatingResolver) ResolveECDSA(verificationMethod string) (*ecdsa.PublicKey, error) {
+	// Check if the underlying resolver supports ECDSA
+	ecdsaResolver, ok := v.resolver.(ECDSAResolver)
+	if !ok {
+		return nil, fmt.Errorf("underlying resolver does not support ECDSA")
+	}
+
+	// First, resolve the key
+	key, err := ecdsaResolver.ResolveECDSA(verificationMethod)
+	if err != nil {
+		return nil, err
+	}
+
+	// Then, validate trust if evaluator supports ECDSA
+	if ecdsaEvaluator, ok := v.evaluator.(ECDSATrustEvaluator); ok {
+		trusted, err := ecdsaEvaluator.EvaluateTrustECDSA(verificationMethod, key, v.role)
+		if err != nil {
+			return nil, fmt.Errorf("ECDSA trust evaluation failed: %w", err)
+		}
+
+		if !trusted {
+			return nil, fmt.Errorf("ECDSA key not trusted for %s", verificationMethod)
+		}
+	}
+	// If evaluator doesn't support ECDSA, we skip trust evaluation
+	// This allows using ValidatingResolver with Ed25519-only evaluators
 
 	return key, nil
 }

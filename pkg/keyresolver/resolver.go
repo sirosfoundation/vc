@@ -4,6 +4,7 @@
 package keyresolver
 
 import (
+	"crypto/ecdsa"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/binary"
@@ -13,10 +14,19 @@ import (
 	"github.com/multiformats/go-multibase"
 )
 
-// Resolver provides methods to resolve public keys from verification methods
+// Resolver provides methods to resolve public keys from verification methods.
+// Implementations may support one or both key types.
 type Resolver interface {
 	// ResolveEd25519 resolves an Ed25519 public key from a verification method identifier
 	ResolveEd25519(verificationMethod string) (ed25519.PublicKey, error)
+}
+
+// ECDSAResolver extends Resolver with ECDSA key resolution capability.
+// Resolvers that support ECDSA keys should implement this interface.
+type ECDSAResolver interface {
+	Resolver
+	// ResolveECDSA resolves an ECDSA public key from a verification method identifier
+	ResolveECDSA(verificationMethod string) (*ecdsa.PublicKey, error)
 }
 
 // MultiResolver combines multiple resolvers with fallback behavior
@@ -49,6 +59,34 @@ func (m *MultiResolver) ResolveEd25519(verificationMethod string) (ed25519.Publi
 
 	// Return the last error
 	return nil, fmt.Errorf("all resolvers failed: %v", errors[len(errors)-1])
+}
+
+// ResolveECDSA tries each resolver that supports ECDSA until one succeeds
+func (m *MultiResolver) ResolveECDSA(verificationMethod string) (*ecdsa.PublicKey, error) {
+	var errors []error
+	foundECDSAResolver := false
+
+	for _, resolver := range m.resolvers {
+		if ecdsaResolver, ok := resolver.(ECDSAResolver); ok {
+			foundECDSAResolver = true
+			key, err := ecdsaResolver.ResolveECDSA(verificationMethod)
+			if err == nil {
+				return key, nil
+			}
+			errors = append(errors, err)
+		}
+	}
+
+	if !foundECDSAResolver {
+		return nil, fmt.Errorf("no ECDSA-capable resolvers configured")
+	}
+
+	if len(errors) == 0 {
+		return nil, fmt.Errorf("no resolvers configured")
+	}
+
+	// Return the last error
+	return nil, fmt.Errorf("all ECDSA resolvers failed: %v", errors[len(errors)-1])
 }
 
 // LocalResolver resolves keys from local data (multikey, did:key)
