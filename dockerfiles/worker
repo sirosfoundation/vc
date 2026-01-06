@@ -1,9 +1,22 @@
 # Compile
-FROM docker.sunet.se/dc4eu/gobuild:latest AS builder
+# Use golang:latest since protoc requires glibc (not available in alpine)
+ARG GOBUILD_IMAGE=golang:latest
+FROM ${GOBUILD_IMAGE} AS builder
 
 ARG SERVICE_NAME
 ARG BUILDTAG
 ARG GO_BUILD_TAGS
+
+WORKDIR /go/src/app
+
+# Install build tools
+RUN apt-get update && apt-get install -y \
+    protobuf-compiler \
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/* \
+    && go install github.com/swaggo/swag/cmd/swag@latest \
+    && go install google.golang.org/protobuf/cmd/protoc-gen-go@latest \
+    && go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
 
 # Copy only dependency files first for better caching
 COPY go.mod go.sum ./
