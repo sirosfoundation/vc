@@ -2,6 +2,7 @@ package model
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 
 	"github.com/SUNET/vc/pkg/mdoc"
@@ -366,6 +367,135 @@ func TestIssuerMetadata_Generate_CustomProofAlgorithms(t *testing.T) {
 	credConfig := metadata.CredentialConfigurationsSupported["test_cred"]
 	jwtProof := credConfig.ProofTypesSupported["jwt"]
 	assert.Equal(t, []string{"ES256", "RS256"}, jwtProof.ProofSigningAlgValuesSupported)
+	attestationProof := credConfig.ProofTypesSupported["attestation"]
+	assert.Equal(t, []string{"ES256", "RS256"}, attestationProof.ProofSigningAlgValuesSupported)
+}
+
+func TestIssuerMetadata_Generate_JwtOnlyProofTypes(t *testing.T) {
+	cfg := &IssuerMetadata{
+		ProofTypesSupported: []string{"jwt"},
+	}
+
+	credMeta := map[string]*CredentialMetadata{
+		"test_cred": {
+			VCTM: &sdjwtvc.VCTM{VCT: "urn:example:test:1"},
+		},
+	}
+
+	ctx := context.Background()
+	metadata, err := cfg.Generate(ctx, "https://issuer.sunet.se", credMeta)
+	require.NoError(t, err)
+
+	credConfig := metadata.CredentialConfigurationsSupported["test_cred"]
+	require.Len(t, credConfig.ProofTypesSupported, 1)
+	_, hasJWT := credConfig.ProofTypesSupported["jwt"]
+	assert.True(t, hasJWT)
+	_, hasAttestation := credConfig.ProofTypesSupported["attestation"]
+	assert.False(t, hasAttestation)
+}
+
+func TestIssuerMetadata_Generate_CustomProofTypes(t *testing.T) {
+	cfg := &IssuerMetadata{
+		ProofTypesSupported:            []string{"attestation"},
+		ProofSigningAlgValuesSupported: []string{"ES256"},
+	}
+
+	credMeta := map[string]*CredentialMetadata{
+		"test_cred": {
+			VCTM: &sdjwtvc.VCTM{VCT: "urn:example:test:1"},
+		},
+	}
+
+	ctx := context.Background()
+	metadata, err := cfg.Generate(ctx, "https://issuer.sunet.se", credMeta)
+	require.NoError(t, err)
+
+	credConfig := metadata.CredentialConfigurationsSupported["test_cred"]
+	require.Len(t, credConfig.ProofTypesSupported, 1)
+	attestationProof := credConfig.ProofTypesSupported["attestation"]
+	assert.Equal(t, []string{"ES256"}, attestationProof.ProofSigningAlgValuesSupported)
+	_, hasJWT := credConfig.ProofTypesSupported["jwt"]
+	assert.False(t, hasJWT)
+}
+
+func TestIssuerMetadata_Generate_OmitKeyAttestationsRequired(t *testing.T) {
+	cfg := &IssuerMetadata{
+		ProofTypesSupported:            []string{"jwt"},
+		IncludeKeyAttestationsRequired: BoolPtr(false),
+	}
+
+	credMeta := map[string]*CredentialMetadata{
+		"test_cred": {
+			VCTM: &sdjwtvc.VCTM{VCT: "urn:example:test:1"},
+		},
+	}
+
+	ctx := context.Background()
+	metadata, err := cfg.Generate(ctx, "https://issuer.sunet.se", credMeta)
+	require.NoError(t, err)
+
+	jwtProof := metadata.CredentialConfigurationsSupported["test_cred"].ProofTypesSupported["jwt"]
+	assert.Nil(t, jwtProof.KeyAttestationsRequired)
+	assert.NotContains(t, marshalProofType(t, jwtProof), "key_attestations_required")
+}
+
+func TestIssuerMetadata_Generate_DefaultKeyAttestationsRequired(t *testing.T) {
+	cfg := &IssuerMetadata{
+		ProofTypesSupported: []string{"jwt"},
+	}
+
+	credMeta := map[string]*CredentialMetadata{
+		"test_cred": {
+			VCTM: &sdjwtvc.VCTM{VCT: "urn:example:test:1"},
+		},
+	}
+
+	ctx := context.Background()
+	metadata, err := cfg.Generate(ctx, "https://issuer.sunet.se", credMeta)
+	require.NoError(t, err)
+
+	jwtProof := metadata.CredentialConfigurationsSupported["test_cred"].ProofTypesSupported["jwt"]
+	require.NotNil(t, jwtProof.KeyAttestationsRequired)
+	assert.Empty(t, jwtProof.KeyAttestationsRequired.KeyStorage)
+	assert.Equal(t, map[string]any{}, marshalProofType(t, jwtProof)["key_attestations_required"])
+}
+
+func TestIssuerMetadata_Generate_CustomKeyAttestationsRequired(t *testing.T) {
+	cfg := &IssuerMetadata{
+		ProofTypesSupported: []string{"jwt"},
+		KeyAttestationsRequired: &openid4vci.KeyAttestationRequirement{
+			KeyStorage:         []string{"iso_18045_high"},
+			UserAuthentication: []string{"iso_18045_moderate"},
+		},
+	}
+
+	credMeta := map[string]*CredentialMetadata{
+		"test_cred": {
+			VCTM: &sdjwtvc.VCTM{VCT: "urn:example:test:1"},
+		},
+	}
+
+	ctx := context.Background()
+	metadata, err := cfg.Generate(ctx, "https://issuer.sunet.se", credMeta)
+	require.NoError(t, err)
+
+	jwtProof := metadata.CredentialConfigurationsSupported["test_cred"].ProofTypesSupported["jwt"]
+	require.NotNil(t, jwtProof.KeyAttestationsRequired)
+	assert.Equal(t, []string{"iso_18045_high"}, jwtProof.KeyAttestationsRequired.KeyStorage)
+	assert.Equal(t, []string{"iso_18045_moderate"}, jwtProof.KeyAttestationsRequired.UserAuthentication)
+
+	raw := marshalProofType(t, jwtProof)["key_attestations_required"].(map[string]any)
+	assert.Equal(t, []any{"iso_18045_high"}, raw["key_storage"])
+	assert.Equal(t, []any{"iso_18045_moderate"}, raw["user_authentication"])
+}
+
+func marshalProofType(t *testing.T, proof openid4vci.ProofsTypesSupported) map[string]any {
+	t.Helper()
+	data, err := json.Marshal(proof)
+	require.NoError(t, err)
+	var raw map[string]any
+	require.NoError(t, json.Unmarshal(data, &raw))
+	return raw
 }
 
 func TestIssuerMetadata_Generate_OptionalEndpoints(t *testing.T) {
@@ -518,8 +648,11 @@ func TestIssuerMetadata_Generate_DefaultValues(t *testing.T) {
 	assert.Equal(t, []string{"jwk"}, credConfig.CryptographicBindingMethodsSupported, "Should use default crypto binding")
 	assert.Equal(t, []any{"ES256", "ES384", "RS256"}, credConfig.CredentialSigningAlgValuesSupported, "Should use default signing algorithms")
 
+	require.Len(t, credConfig.ProofTypesSupported, 2, "Should advertise jwt and attestation by default")
 	jwtProof := credConfig.ProofTypesSupported["jwt"]
 	assert.Equal(t, []string{"ES256", "ES384", "ES512", "RS256", "RS384", "RS512"}, jwtProof.ProofSigningAlgValuesSupported, "Should use default proof algorithms")
+	attestationProof := credConfig.ProofTypesSupported["attestation"]
+	assert.Equal(t, []string{"ES256", "ES384", "ES512", "RS256", "RS384", "RS512"}, attestationProof.ProofSigningAlgValuesSupported, "Should use default proof algorithms")
 
 	// Check credential definition (vc+sd-jwt is not a W3C VC format, so no credential_definition)
 	assert.Nil(t, credConfig.CredentialDefinition, "vc+sd-jwt should not have credential_definition")
