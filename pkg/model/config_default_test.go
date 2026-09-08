@@ -248,3 +248,13 @@ func TestOAuthServerDefaults(t *testing.T) {
 	assert.Equal(t, []string{"authorization_code", "urn:ietf:params:oauth:grant-type:pre-authorized_code"}, cfg.GrantTypes)
 	assert.Equal(t, 86400, cfg.RefreshTokenDuration)
 }
+
+func TestIssuerMetadataDefaults(t *testing.T) {
+	var cfg IssuerMetadata
+	err := defaults.Set(&cfg)
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"jwt", "attestation"}, cfg.ProofTypesSupported)
+	require.NotNil(t, cfg.IncludeKeyAttestationsRequired)
+	assert.True(t, *cfg.IncludeKeyAttestationsRequired)
+}

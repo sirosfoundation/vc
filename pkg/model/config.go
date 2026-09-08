@@ -1103,6 +1103,23 @@ type IssuerMetadata struct {
 	CredentialSigningAlgValuesSupported []string `yaml:"credential_signing_alg_values_supported" validate:"omitempty"`
 	// ProofSigningAlgValuesSupported lists the supported proof algorithms
 	ProofSigningAlgValuesSupported []string `yaml:"proof_signing_alg_values_supported" validate:"omitempty"`
+	// ProofTypesSupported lists the key proof types advertised under
+	// credential_configurations_supported.proof_types_supported.
+	// Supported values: jwt, attestation.
+	// When empty, both jwt and attestation are advertised: eudi-lib-jvm-openid4vci-kt
+	// 0.12.1+ rejects issuer metadata unless both are present. Advertising
+	// attestation also makes that library send attestation proofs instead of jwt.
+	// Set to ["jwt"] to advertise JWT proofs only.
+	ProofTypesSupported []string `yaml:"proof_types_supported" validate:"omitempty,dive,oneof=jwt attestation" default:"[\"jwt\", \"attestation\"]" doc_example:"[\"jwt\"]"`
+	// IncludeKeyAttestationsRequired controls whether key_attestations_required
+	// is advertised on each proof type. When true (default), the field is
+	// included as a JSON object — `{}` if KeyAttestationsRequired is unset,
+	// which eudi-lib-jvm-openid4vci-kt 0.12.1+ requires. When false, the field
+	// is omitted from issuer metadata.
+	IncludeKeyAttestationsRequired *bool `yaml:"include_key_attestations_required" default:"true"`
+	// KeyAttestationsRequired is the object advertised when
+	// include_key_attestations_required is true. All fields are optional.
+	KeyAttestationsRequired *openid4vci.KeyAttestationRequirement `yaml:"key_attestations_required" validate:"omitempty"`
 	// CredentialResponseEncryption holds the response encryption configuration
 	CredentialResponseEncryption *openid4vci.MetadataCredentialResponseEncryption `yaml:"credential_response_encryption" validate:"omitempty"`
 	// BatchCredentialIssuance holds the batch issuance configuration
@@ -1789,37 +1806,35 @@ func (cfg *IssuerMetadata) applyCommonCredentialConfig(credConfig *openid4vci.Cr
 		// Default to common algorithms if not configured
 		proofAlgs = []string{"ES256", "ES384", "ES512", "RS256", "RS384", "RS512"}
 	}
-	// Confirmed by direct testing (lpidproto PLAN.md workstream 7): scoping
-	// 'attestation' to only the "pid" credential config breaks metadata
-	// parsing for EVERY offer, including ones that only reference "pid" --
+	// Proof types are applied uniformly to every credential configuration.
 	// eudi-lib-jvm-openid4vci-kt validates proof_types_supported across the
-	// whole credential_configurations_supported document, not per-entry.
-	// So this must be declared uniformly for every scope, "lpid" included;
-	// it cannot be scoped away. See ARCHITECTURE.md for the resulting
-	// caveat this leaves on "lpid"'s advertised proof capabilities, and
-	// pkg/openid4vci/proof_attestation.go's Verify() for the deeper gap
-	// this uncovered (attestation proofs are never signature-verified).
-	credConfig.ProofTypesSupported = map[string]openid4vci.ProofsTypesSupported{
-		"jwt": {
-			ProofSigningAlgValuesSupported: proofAlgs,
-			KeyAttestationsRequired:        openid4vci.KeyAttestationRequirement{},
-		},
-		// "attestation": declared alongside "jwt" because
-		// eudi-lib-jvm-openid4vci-kt 0.12.1+ hard-fails issuer metadata
-		// validation unless both proof types are present ("Both JWT Proofs
-		// and Attestation Proofs must be supported"). This is a declarative
-		// capability advertisement only -- vc-apigw has no wallet-attestation
-		// verification wired up (lpidproto PLAN.md workstream 8, not started),
-		// and this project's reference-wallet client config uses
-		// ClientAuthenticationType.None rather than AttestationBased, so it
-		// won't actually submit an attestation-typed proof. Revisit alongside
-		// KeyAttestationsRequired above if WS8 ever implements real
-		// attestation verification.
-		"attestation": {
-			ProofSigningAlgValuesSupported: proofAlgs,
-			KeyAttestationsRequired:        openid4vci.KeyAttestationRequirement{},
-		},
+	// whole credential_configurations_supported document, not per-entry, so
+	// this cannot be scoped to a single credential.
+	proofTypes := cfg.ProofTypesSupported
+	if len(proofTypes) == 0 {
+		proofTypes = []string{"jwt", "attestation"}
 	}
+	credConfig.ProofTypesSupported = make(map[string]openid4vci.ProofsTypesSupported, len(proofTypes))
+	keyAttestations := cfg.advertisedKeyAttestationsRequired()
+	for _, proofType := range proofTypes {
+		credConfig.ProofTypesSupported[proofType] = openid4vci.ProofsTypesSupported{
+			ProofSigningAlgValuesSupported: proofAlgs,
+			KeyAttestationsRequired:        keyAttestations,
+		}
+	}
+}
+
+// advertisedKeyAttestationsRequired returns the key_attestations_required
+// object to publish, or nil to omit the field from issuer metadata.
+func (cfg *IssuerMetadata) advertisedKeyAttestationsRequired() *openid4vci.KeyAttestationRequirement {
+	if !BoolVal(cfg.IncludeKeyAttestationsRequired, true) {
+		return nil
+	}
+	if cfg.KeyAttestationsRequired != nil {
+		req := *cfg.KeyAttestationsRequired
+		return &req
+	}
+	return &openid4vci.KeyAttestationRequirement{}
 }
 
 // mapSvgTemplates converts a dialect's SVG template list (mdoc.SVGTemplate

@@ -175,14 +175,21 @@ type EmbeddedDisclosurePolicy struct {
 	TrustedRoots []string `json:"trusted_roots,omitempty" yaml:"trusted_roots,omitempty" validate:"required_if=PolicyType specific_root_of_trust,dive,required,len=64,hexadecimal"`
 }
 
-// KeyAttestationRequirement describes constraints the Wallet's key attestation
-// must satisfy for a given proof type. All fields are optional; a zero value
-// serializes to `{}`, meaning "attestation metadata present, no constraints
-// declared" -- see ProofsTypesSupported.KeyAttestationsRequired.
+// KeyAttestationRequirement holds optional ISO/IEC 18045 constraints.
+// Advertised as key_attestations_required. A zero value serializes to `{}`
+// (no constraints declared).
 type KeyAttestationRequirement struct {
-	KeyStorage                      []string `json:"key_storage,omitempty" yaml:"key_storage,omitempty"`
-	UserAuthentication              []string `json:"user_authentication,omitempty" yaml:"user_authentication,omitempty"`
-	PreferredKeyStorageStatusPeriod *int     `json:"preferred_key_storage_status_period,omitempty" yaml:"preferred_key_storage_status_period,omitempty"`
+	// KeyStorage is a list of ISO/IEC 18045 attack-potential ratings the
+	// Wallet's key storage must meet.
+	KeyStorage []string `json:"key_storage,omitempty" yaml:"key_storage,omitempty" validate:"omitempty,dive,oneof=iso_18045_high iso_18045_moderate iso_18045_enhanced-basic iso_18045_basic" doc_example:"[\"iso_18045_high\"]"`
+
+	// UserAuthentication is a list of ISO/IEC 18045 attack-potential ratings
+	// the Wallet's user authentication must meet.
+	UserAuthentication []string `json:"user_authentication,omitempty" yaml:"user_authentication,omitempty" validate:"omitempty,dive,oneof=iso_18045_high iso_18045_moderate iso_18045_enhanced-basic iso_18045_basic" doc_example:"[\"iso_18045_high\"]"`
+
+	// PreferredKeyStorageStatusPeriod is the preferred period in seconds for
+	// which the Wallet should consider key storage status valid.
+	PreferredKeyStorageStatusPeriod *int `json:"preferred_key_storage_status_period,omitempty" yaml:"preferred_key_storage_status_period,omitempty" validate:"omitempty,gte=0"`
 }
 
 // ProofsTypesSupported Object that describes specifics of the key proof(s) that the Credential Issuer supports.
@@ -190,16 +197,12 @@ type ProofsTypesSupported struct {
 	// ProofSigningAlgValuesSupported: REQUIRED. Array of case sensitive strings that identify the algorithms that the Issuer supports for this proof type. The Wallet uses one of them to sign the proof. Algorithm names used are determined by the key proof type and are defined in Section 7.2.1.
 	ProofSigningAlgValuesSupported []string `json:"proof_signing_alg_values_supported" yaml:"proof_signing_alg_values_supported" validate:"required"`
 
-	// KeyAttestationsRequired: REQUIRED (per later OpenID4VCI drafts consumed by
-	// eudi-lib-jvm-openid4vci-kt 0.12.1+, which hard-fails issuer metadata
-	// validation without this field, and expects it to be a JSON object, not a
-	// boolean -- confirmed by decompiling KeyAttestationRequirementTO in that
-	// library). A zero-value KeyAttestationRequirement serializes to `{}`,
-	// declaring no specific attestation constraints -- this project has no
-	// Wallet Attestation / WSCD verification wired up yet (lpidproto PLAN.md
-	// workstream 8, not yet started), so asserting real constraints here would
-	// be dishonest. Revisit together with WS8 (production trust rollout).
-	KeyAttestationsRequired KeyAttestationRequirement `json:"key_attestations_required" yaml:"key_attestations_required"`
+	// KeyAttestationsRequired describes constraints on Wallet key attestations
+	// for this proof type. A non-nil empty object serializes to `{}` (no
+	// constraints declared). Nil omits the field. eudi-lib-jvm-openid4vci-kt
+	// 0.12.1+ hard-fails issuer metadata validation unless this field is a JSON
+	// object when the proof type is advertised.
+	KeyAttestationsRequired *KeyAttestationRequirement `json:"key_attestations_required,omitempty" yaml:"key_attestations_required,omitempty"`
 }
 
 // CredentialMetadata contains information relevant to the usage and display of issued Credentials.
