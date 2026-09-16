@@ -693,11 +693,36 @@ func TestIssuerMetadata_Generate_MultipleCredentials(t *testing.T) {
 
 	ehicConfig := metadata.CredentialConfigurationsSupported["ehic"]
 	assert.Equal(t, "vc+sd-jwt", ehicConfig.Format)
-	assert.Equal(t, baseURL+"/type-metadata/ehic", ehicConfig.VCT)
+	assert.Equal(t, "urn:eudi:ehic:1", ehicConfig.VCT)
 
 	diplomaConfig := metadata.CredentialConfigurationsSupported["diploma"]
 	assert.Equal(t, "vc+sd-jwt", diplomaConfig.Format) // default
-	assert.Equal(t, baseURL+"/type-metadata/diploma", diplomaConfig.VCT)
+	assert.Equal(t, "urn:eudi:diploma:1", diplomaConfig.VCT)
+}
+
+func TestIssuerMetadata_Generate_VCTMatchesEmbeddedClaim(t *testing.T) {
+	cfg := &IssuerMetadata{}
+
+	// Local VCTMs are published at /type-metadata/{scope}, but the SD-JWT
+	// "vct" claim is the VCTM's own identifier. Issuer metadata must advertise
+	// that identifier so wallets that stamp SdJwtVcFormat from
+	// credential_configurations_supported.vct store a type DCQL can match.
+	credMeta := map[string]*CredentialMetadata{
+		"student-id": {
+			VCTM: &sdjwtvc.VCTM{
+				VCT: "https://registry.siros.org/sirosfoundation/demo_student_id.vctm.json",
+			},
+			VCTURL: "https://de-eudi-wallet.issuer.id.siros.org/type-metadata/student-id",
+			Format: "dc+sd-jwt",
+		},
+	}
+
+	metadata, err := cfg.Generate(context.Background(), "https://de-eudi-wallet.issuer.id.siros.org", credMeta)
+	require.NoError(t, err)
+
+	credConfig, exists := metadata.CredentialConfigurationsSupported["student-id"]
+	require.True(t, exists)
+	assert.Equal(t, "https://registry.siros.org/sirosfoundation/demo_student_id.vctm.json", credConfig.VCT)
 }
 
 func TestIssuerMetadata_Generate_DisclosurePolicy(t *testing.T) {

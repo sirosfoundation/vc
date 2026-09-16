@@ -1986,8 +1986,20 @@ func (cfg *IssuerMetadata) Generate(ctx context.Context, publicURL string, crede
 			return nil, fmt.Errorf("credential constructor for scope %q has no VCTM metadata loaded (check vctm_file_path)", scope)
 		}
 
-		// Set format-specific parameters per OID4VCI 1.0 Appendix A
-		resolvedVCT := constructor.GetVCTURL()
+		// OID4VCI 1.0 Appendix A.3: credential_configurations_supported.vct
+		// is the credential type identifier. Wallets such as the EUDI
+		// reference wallet stamp SdJwtVcFormat(vct = configuration.type)
+		// from this field and later match DCQL vct_values against it, so it
+		// must be the same value BuildCredentialWithSigner writes as the
+		// SD-JWT "vct" claim (vctm.VCT) — not the URL we publish the VCTM
+		// document at. When those differ (a local VCTM served at
+		// /type-metadata/student-id whose vct is a registry URL), advertising
+		// the type-metadata URL made wallets store a type no verifier query
+		// and no credential body ever uses.
+		resolvedVCT := vctm.VCT
+		if resolvedVCT == "" {
+			resolvedVCT = constructor.GetVCTURL()
+		}
 		switch constructor.Format {
 		case "dc+sd-jwt":
 			// Appendix A.3: only vct is format-specific for dc+sd-jwt
