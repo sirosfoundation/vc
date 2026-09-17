@@ -416,3 +416,8 @@ Default configured algorithms: `["ES256", "ES384"]`. See `config.yaml` under `ap
 `GET http://<apigw-url>/swagger/doc.json`
 
 or with web browser: `http://<apigw-url>/swagger/index.html`
+
+Verifier API docs are available at:
+
+- `GET http://<verifier-url>/swagger/doc.json`
+- `http://<verifier-url>/swagger/index.html`
