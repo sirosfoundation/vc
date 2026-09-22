@@ -28,6 +28,21 @@ type AuthorizationDetailsParameter struct {
 	CredentialIdentifiers []string `json:"credential_identifiers,omitempty"`
 }
 
+// AuthorizationDetails is the authorization_details parameter from RFC 9396.
+// Wallets send it as one application/x-www-form-urlencoded field whose value
+// is a JSON array. Gin's default slice binding JSON-decodes each form value
+// into a single element, which fails with
+// "cannot unmarshal array into Go value of type AuthorizationDetailsParameter".
+type AuthorizationDetails []AuthorizationDetailsParameter
+
+// UnmarshalParam implements gin's binding.BindUnmarshaler.
+func (a *AuthorizationDetails) UnmarshalParam(param string) error {
+	if param == "" {
+		return nil
+	}
+	return json.Unmarshal([]byte(param), a)
+}
+
 // PARRequest https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#RFC6749
 type PARRequest struct {
 	// RFC 6749#4.1.1
@@ -37,10 +52,10 @@ type PARRequest struct {
 	Scope        string `json:"scope" form:"scope"`
 	State        string `json:"state" form:"state"`
 
-	Prompt               string                          `json:"prompt" form:"prompt"`
-	AuthorizationDetails []AuthorizationDetailsParameter `json:"authorization_details" form:"authorization_details"`
-	CodeChallenge        string                          `json:"code_challenge" form:"code_challenge" validate:"required"`
-	CodeChallengeMethod  string                          `json:"code_challenge_method" form:"code_challenge_method" validate:"required,oneof=S256 plain"`
+	Prompt               string               `json:"prompt" form:"prompt"`
+	AuthorizationDetails AuthorizationDetails `json:"authorization_details" form:"authorization_details"`
+	CodeChallenge        string               `json:"code_challenge" form:"code_challenge" validate:"required"`
+	CodeChallengeMethod  string               `json:"code_challenge_method" form:"code_challenge_method" validate:"required,oneof=S256 plain"`
 
 	// https://openid.net/specs/openid-4-verifiable-credential-issuance-1_0.html#name-additional-request-paramete
 	WalletIssuer string `json:"wallet_issuer" form:"wallet_issuer"`

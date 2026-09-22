@@ -122,7 +122,7 @@ func (c *Client) OAuthPar(ctx context.Context, req *openid4vci.PARRequest) (*ope
 		Code:                 uuid.NewString(),
 		RequestURI:           requestURI,
 		Scopes:               []string{req.Scope},
-		AuthorizationDetails: req.AuthorizationDetails,
+		AuthorizationDetails: []openid4vci.AuthorizationDetailsParameter(req.AuthorizationDetails),
 		Forfeited:            false,
 		CodeChallenge:        req.CodeChallenge,
 		CodeChallengeMethod:  req.CodeChallengeMethod,
