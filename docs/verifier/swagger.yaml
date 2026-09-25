@@ -1,4 +1,725 @@
+definitions:
+  apiv1.ClientInformationResponse:
+    properties:
+      application_type:
+        description: OpenID Connect specific
+        type: string
+      client_id:
+        type: string
+      client_id_issued_at:
+        type: integer
+      client_name:
+        type: string
+      client_secret:
+        type: string
+      client_secret_expires_at:
+        description: 0 = never expires, REQUIRED per RFC 7591
+        type: integer
+      client_uri:
+        type: string
+      code_challenge_method:
+        description: PKCE
+        type: string
+      contacts:
+        items:
+          type: string
+        type: array
+      default_acr_values:
+        items:
+          type: string
+        type: array
+      default_max_age:
+        type: integer
+      grant_types:
+        items:
+          type: string
+        type: array
+      id_token_signed_response_alg:
+        type: string
+      initiate_login_uri:
+        type: string
+      jwks: {}
+      jwks_uri:
+        type: string
+      logo_uri:
+        type: string
+      policy_uri:
+        type: string
+      redirect_uris:
+        items:
+          type: string
+        type: array
+      registration_access_token:
+        type: string
+      registration_client_uri:
+        type: string
+      request_uris:
+        items:
+          type: string
+        type: array
+      require_auth_time:
+        type: boolean
+      response_types:
+        items:
+          type: string
+        type: array
+      scope:
+        type: string
+      sector_identifier_uri:
+        type: string
+      software_id:
+        type: string
+      software_version:
+        type: string
+      subject_type:
+        type: string
+      token_endpoint_auth_method:
+        type: string
+      tos_uri:
+        type: string
+    type: object
+  apiv1.ClientRegistrationRequest:
+    type: object
+  apiv1.ClientRegistrationResponse:
+    properties:
+      application_type:
+        description: OpenID Connect specific
+        type: string
+      client_id:
+        type: string
+      client_id_issued_at:
+        type: integer
+      client_name:
+        type: string
+      client_secret:
+        type: string
+      client_secret_expires_at:
+        description: 0 = never expires, REQUIRED per RFC 7591
+        type: integer
+      client_uri:
+        type: string
+      code_challenge_method:
+        description: PKCE
+        type: string
+      contacts:
+        items:
+          type: string
+        type: array
+      default_acr_values:
+        items:
+          type: string
+        type: array
+      default_max_age:
+        type: integer
+      grant_types:
+        items:
+          type: string
+        type: array
+      id_token_signed_response_alg:
+        type: string
+      initiate_login_uri:
+        type: string
+      jwks: {}
+      jwks_uri:
+        type: string
+      logo_uri:
+        type: string
+      policy_uri:
+        type: string
+      redirect_uris:
+        items:
+          type: string
+        type: array
+      registration_access_token:
+        type: string
+      registration_client_uri:
+        type: string
+      request_uris:
+        items:
+          type: string
+        type: array
+      require_auth_time:
+        type: boolean
+      response_types:
+        items:
+          type: string
+        type: array
+      scope:
+        type: string
+      sector_identifier_uri:
+        type: string
+      software_id:
+        type: string
+      software_version:
+        type: string
+      subject_type:
+        type: string
+      token_endpoint_auth_method:
+        type: string
+      tos_uri:
+        type: string
+    type: object
+  apiv1.ConfirmCredentialDisplayRequest:
+    properties:
+      confirmed:
+        type: boolean
+    type: object
+  apiv1.ConfirmCredentialDisplayResponse:
+    properties:
+      redirect_uri:
+        type: string
+    type: object
+  apiv1.DirectPostRequest:
+    properties:
+      presentation_submission:
+        description: For standard direct_post (JSON, can be large)
+        type: string
+      response:
+        description: For DC API encrypted JWT response (can be very large)
+        type: string
+      state:
+        maxLength: 256
+        type: string
+      vp_token:
+        description: For standard direct_post (JWT, can be very large)
+        type: string
+    required:
+    - state
+    type: object
+  apiv1.DirectPostResponse:
+    properties:
+      redirectURI:
+        type: string
+    type: object
+  apiv1.DiscoveryMetadata:
+    properties:
+      authorization_endpoint:
+        type: string
+      claims_supported:
+        items:
+          type: string
+        type: array
+      code_challenge_methods_supported:
+        items:
+          type: string
+        type: array
+      grant_types_supported:
+        items:
+          type: string
+        type: array
+      id_token_signing_alg_values_supported:
+        items:
+          type: string
+        type: array
+      issuer:
+        type: string
+      jwks_uri:
+        type: string
+      registration_endpoint:
+        description: RFC 7591
+        type: string
+      response_types_supported:
+        items:
+          type: string
+        type: array
+      scopes_supported:
+        items:
+          type: string
+        type: array
+      subject_types_supported:
+        items:
+          type: string
+        type: array
+      token_endpoint:
+        type: string
+      token_endpoint_auth_methods_supported:
+        items:
+          type: string
+        type: array
+      userinfo_endpoint:
+        type: string
+    type: object
+  apiv1.PollSessionResponse:
+    properties:
+      redirect_uri:
+        type: string
+      status:
+        type: string
+    type: object
+  apiv1.TokenResponse:
+    properties:
+      access_token:
+        type: string
+      expires_in:
+        type: integer
+      id_token:
+        type: string
+      refresh_token:
+        type: string
+      scope:
+        type: string
+      token_type:
+        type: string
+    type: object
+  apiv1.UpdateClientRequest:
+    type: object
+  apiv1.UpdateSessionPreferenceRequest:
+    properties:
+      session_id:
+        maxLength: 128
+        type: string
+      show_credential_details:
+        type: boolean
+    required:
+    - session_id
+    type: object
+  apiv1.UpdateSessionPreferenceResponse:
+    properties:
+      success:
+        type: boolean
+    type: object
+  apiv1.UserInfoResponse:
+    additionalProperties: {}
+    type: object
 info:
   contact: {}
-paths: {}
+paths:
+  /.well-known/oauth-authorization-server:
+    get:
+      description: Returns OAuth authorization server metadata.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.DiscoveryMetadata'
+      summary: OAuth authorization server metadata
+      tags:
+      - oidc
+  /.well-known/openid-configuration:
+    get:
+      description: Returns OpenID Connect discovery metadata for relying parties.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.DiscoveryMetadata'
+      summary: OpenID Provider metadata
+      tags:
+      - oidc
+  /authorize:
+    get:
+      description: Starts OIDC authorization flow.
+      parameters:
+      - in: query
+        maxLength: 512
+        name: acr_values
+        type: string
+      - in: query
+        maxLength: 128
+        name: client_id
+        required: true
+        type: string
+      - in: query
+        maxLength: 128
+        name: code_challenge
+        type: string
+      - in: query
+        maxLength: 128
+        name: code_challenge_method
+        type: string
+      - in: query
+        maxLength: 128
+        name: display
+        type: string
+      - in: query
+        maxLength: 8192
+        name: id_token_hint
+        type: string
+      - in: query
+        maxLength: 256
+        name: login_hint
+        type: string
+      - in: query
+        name: max_age
+        type: integer
+      - in: query
+        maxLength: 256
+        name: nonce
+        type: string
+      - in: query
+        maxLength: 128
+        name: prompt
+        type: string
+      - in: query
+        maxLength: 2048
+        name: redirect_uri
+        required: true
+        type: string
+      - in: query
+        maxLength: 128
+        name: response_mode
+        type: string
+      - in: query
+        maxLength: 128
+        name: response_type
+        required: true
+        type: string
+      - in: query
+        maxLength: 1024
+        name: scope
+        required: true
+        type: string
+      - in: query
+        maxLength: 500
+        name: state
+        type: string
+      - in: query
+        maxLength: 256
+        name: ui_locales
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: Authorization page
+          schema:
+            type: string
+      summary: Authorize
+      tags:
+      - oidc
+  /jwks:
+    get:
+      description: Returns the JSON Web Key Set used by verifier tokens.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: JWKS
+      tags:
+      - oidc
+  /poll/{session_id}:
+    get:
+      description: Polls the current status of a verification session.
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.PollSessionResponse'
+      summary: Poll session status
+      tags:
+      - session
+  /qr/{session_id}:
+    get:
+      description: Returns QR code image for verification session.
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - image/png
+      responses:
+        "200":
+          description: PNG image
+          schema:
+            type: string
+      summary: QR code
+      tags:
+      - session
+  /register:
+    post:
+      consumes:
+      - application/json
+      description: Registers a new OAuth/OIDC client.
+      parameters:
+      - description: Client registration metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/apiv1.ClientRegistrationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/apiv1.ClientRegistrationResponse'
+      summary: Register client
+      tags:
+      - client-registration
+  /register/{client_id}:
+    delete:
+      description: Deletes a registered client.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      responses:
+        "204":
+          description: No Content
+      summary: Delete client configuration
+      tags:
+      - client-registration
+    get:
+      description: Returns registered client metadata.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.ClientInformationResponse'
+      summary: Get client configuration
+      tags:
+      - client-registration
+    put:
+      consumes:
+      - application/json
+      description: Updates registered client metadata.
+      parameters:
+      - description: Client ID
+        in: path
+        name: client_id
+        required: true
+        type: string
+      - description: Updated client metadata
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/apiv1.UpdateClientRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.ClientRegistrationResponse'
+      summary: Update client configuration
+      tags:
+      - client-registration
+  /token:
+    post:
+      consumes:
+      - application/x-www-form-urlencoded
+      description: Exchanges authorization code for tokens.
+      parameters:
+      - in: formData
+        maxLength: 128
+        name: client_id
+        type: string
+      - in: formData
+        maxLength: 256
+        name: client_secret
+        type: string
+      - in: formData
+        maxLength: 256
+        name: code
+        type: string
+      - in: formData
+        maxLength: 128
+        name: code_verifier
+        type: string
+      - in: formData
+        maxLength: 128
+        name: grant_type
+        required: true
+        type: string
+      - in: formData
+        maxLength: 2048
+        name: redirect_uri
+        type: string
+      - in: formData
+        maxLength: 256
+        name: refresh_token
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.TokenResponse'
+      summary: Token
+      tags:
+      - oidc
+  /userinfo:
+    get:
+      description: Returns claims for a valid access token.
+      parameters:
+      - description: '****** token'
+        in: header
+        name: Authorization
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.UserInfoResponse'
+      summary: UserInfo
+      tags:
+      - oidc
+  /verification/confirm/{session_id}:
+    post:
+      consumes:
+      - application/json
+      description: Confirms displayed credential and continues flow.
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      - description: Confirmation payload
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/apiv1.ConfirmCredentialDisplayRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.ConfirmCredentialDisplayResponse'
+      summary: Confirm credential display
+      tags:
+      - session
+  /verification/display/{session_id}:
+    get:
+      description: Returns credential display page for review.
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - text/html
+      responses:
+        "200":
+          description: HTML page
+          schema:
+            type: string
+      summary: Credential display
+      tags:
+      - session
+  /verification/oidc-callback:
+    get:
+      description: Processes callback and redirects back to RP.
+      parameters:
+      - in: query
+        maxLength: 128
+        name: code
+        type: string
+      - in: query
+        maxLength: 1000
+        name: error
+        type: string
+      - in: query
+        maxLength: 128
+        name: state
+        required: true
+        type: string
+      responses:
+        "302":
+          description: Redirect
+          schema:
+            type: string
+      summary: OpenID4VP callback
+      tags:
+      - openid4vp
+  /verification/oidc-direct_post:
+    post:
+      consumes:
+      - application/json
+      description: Receives verifiable presentation from wallet.
+      parameters:
+      - description: Wallet response
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/apiv1.DirectPostRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.DirectPostResponse'
+      summary: OpenID4VP direct_post
+      tags:
+      - openid4vp
+  /verification/request-object/{session_id}:
+    get:
+      description: Returns the signed request object for a verification session.
+      parameters:
+      - description: Session ID
+        in: path
+        name: session_id
+        required: true
+        type: string
+      produces:
+      - application/oauth-authz-req+jwt
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Get OpenID4VP request object
+      tags:
+      - openid4vp
+  /verification/session-preference:
+    post:
+      consumes:
+      - application/json
+      description: Updates UI/session display preferences.
+      parameters:
+      - description: Session preferences
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/apiv1.UpdateSessionPreferenceRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/apiv1.UpdateSessionPreferenceResponse'
+      summary: Update session preference
+      tags:
+      - session
 swagger: "2.0"

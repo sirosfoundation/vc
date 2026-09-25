@@ -3,5 +3,1094 @@
     "info": {
         "contact": {}
     },
-    "paths": {}
+    "paths": {
+        "/.well-known/oauth-authorization-server": {
+            "get": {
+                "description": "Returns OAuth authorization server metadata.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oidc"
+                ],
+                "summary": "OAuth authorization server metadata",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.DiscoveryMetadata"
+                        }
+                    }
+                }
+            }
+        },
+        "/.well-known/openid-configuration": {
+            "get": {
+                "description": "Returns OpenID Connect discovery metadata for relying parties.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oidc"
+                ],
+                "summary": "OpenID Provider metadata",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.DiscoveryMetadata"
+                        }
+                    }
+                }
+            }
+        },
+        "/authorize": {
+            "get": {
+                "description": "Starts OIDC authorization flow.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "oidc"
+                ],
+                "summary": "Authorize",
+                "parameters": [
+                    {
+                        "maxLength": 512,
+                        "type": "string",
+                        "name": "acr_values",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "client_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "code_challenge",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "code_challenge_method",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "display",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 8192,
+                        "type": "string",
+                        "name": "id_token_hint",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 256,
+                        "type": "string",
+                        "name": "login_hint",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "name": "max_age",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 256,
+                        "type": "string",
+                        "name": "nonce",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "prompt",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 2048,
+                        "type": "string",
+                        "name": "redirect_uri",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "response_mode",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "response_type",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "maxLength": 1024,
+                        "type": "string",
+                        "name": "scope",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "maxLength": 500,
+                        "type": "string",
+                        "name": "state",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 256,
+                        "type": "string",
+                        "name": "ui_locales",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Authorization page",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/jwks": {
+            "get": {
+                "description": "Returns the JSON Web Key Set used by verifier tokens.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oidc"
+                ],
+                "summary": "JWKS",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/poll/{session_id}": {
+            "get": {
+                "description": "Polls the current status of a verification session.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "session"
+                ],
+                "summary": "Poll session status",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.PollSessionResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/qr/{session_id}": {
+            "get": {
+                "description": "Returns QR code image for verification session.",
+                "produces": [
+                    "image/png"
+                ],
+                "tags": [
+                    "session"
+                ],
+                "summary": "QR code",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "PNG image",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/register": {
+            "post": {
+                "description": "Registers a new OAuth/OIDC client.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "client-registration"
+                ],
+                "summary": "Register client",
+                "parameters": [
+                    {
+                        "description": "Client registration metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.ClientRegistrationRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.ClientRegistrationResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/register/{client_id}": {
+            "get": {
+                "description": "Returns registered client metadata.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "client-registration"
+                ],
+                "summary": "Get client configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.ClientInformationResponse"
+                        }
+                    }
+                }
+            },
+            "put": {
+                "description": "Updates registered client metadata.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "client-registration"
+                ],
+                "summary": "Update client configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated client metadata",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.UpdateClientRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.ClientRegistrationResponse"
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes a registered client.",
+                "tags": [
+                    "client-registration"
+                ],
+                "summary": "Delete client configuration",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Client ID",
+                        "name": "client_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/token": {
+            "post": {
+                "description": "Exchanges authorization code for tokens.",
+                "consumes": [
+                    "application/x-www-form-urlencoded"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oidc"
+                ],
+                "summary": "Token",
+                "parameters": [
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "client_id",
+                        "in": "formData"
+                    },
+                    {
+                        "maxLength": 256,
+                        "type": "string",
+                        "name": "client_secret",
+                        "in": "formData"
+                    },
+                    {
+                        "maxLength": 256,
+                        "type": "string",
+                        "name": "code",
+                        "in": "formData"
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "code_verifier",
+                        "in": "formData"
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "grant_type",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "maxLength": 2048,
+                        "type": "string",
+                        "name": "redirect_uri",
+                        "in": "formData"
+                    },
+                    {
+                        "maxLength": 256,
+                        "type": "string",
+                        "name": "refresh_token",
+                        "in": "formData"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.TokenResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/userinfo": {
+            "get": {
+                "description": "Returns claims for a valid access token.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "oidc"
+                ],
+                "summary": "UserInfo",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "****** token",
+                        "name": "Authorization",
+                        "in": "header",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.UserInfoResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/verification/confirm/{session_id}": {
+            "post": {
+                "description": "Confirms displayed credential and continues flow.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "session"
+                ],
+                "summary": "Confirm credential display",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Confirmation payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.ConfirmCredentialDisplayRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.ConfirmCredentialDisplayResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/verification/display/{session_id}": {
+            "get": {
+                "description": "Returns credential display page for review.",
+                "produces": [
+                    "text/html"
+                ],
+                "tags": [
+                    "session"
+                ],
+                "summary": "Credential display",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "HTML page",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/verification/oidc-callback": {
+            "get": {
+                "description": "Processes callback and redirects back to RP.",
+                "tags": [
+                    "openid4vp"
+                ],
+                "summary": "OpenID4VP callback",
+                "parameters": [
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "code",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 1000,
+                        "type": "string",
+                        "name": "error",
+                        "in": "query"
+                    },
+                    {
+                        "maxLength": 128,
+                        "type": "string",
+                        "name": "state",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Redirect",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/verification/oidc-direct_post": {
+            "post": {
+                "description": "Receives verifiable presentation from wallet.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "openid4vp"
+                ],
+                "summary": "OpenID4VP direct_post",
+                "parameters": [
+                    {
+                        "description": "Wallet response",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.DirectPostRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.DirectPostResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/verification/request-object/{session_id}": {
+            "get": {
+                "description": "Returns the signed request object for a verification session.",
+                "produces": [
+                    "application/oauth-authz-req+jwt"
+                ],
+                "tags": [
+                    "openid4vp"
+                ],
+                "summary": "Get OpenID4VP request object",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Session ID",
+                        "name": "session_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/verification/session-preference": {
+            "post": {
+                "description": "Updates UI/session display preferences.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "session"
+                ],
+                "summary": "Update session preference",
+                "parameters": [
+                    {
+                        "description": "Session preferences",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.UpdateSessionPreferenceRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/apiv1.UpdateSessionPreferenceResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "apiv1.ClientInformationResponse": {
+            "type": "object",
+            "properties": {
+                "application_type": {
+                    "description": "OpenID Connect specific",
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_id_issued_at": {
+                    "type": "integer"
+                },
+                "client_name": {
+                    "type": "string"
+                },
+                "client_secret": {
+                    "type": "string"
+                },
+                "client_secret_expires_at": {
+                    "description": "0 = never expires, REQUIRED per RFC 7591",
+                    "type": "integer"
+                },
+                "client_uri": {
+                    "type": "string"
+                },
+                "code_challenge_method": {
+                    "description": "PKCE",
+                    "type": "string"
+                },
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "default_acr_values": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "default_max_age": {
+                    "type": "integer"
+                },
+                "grant_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id_token_signed_response_alg": {
+                    "type": "string"
+                },
+                "initiate_login_uri": {
+                    "type": "string"
+                },
+                "jwks": {},
+                "jwks_uri": {
+                    "type": "string"
+                },
+                "logo_uri": {
+                    "type": "string"
+                },
+                "policy_uri": {
+                    "type": "string"
+                },
+                "redirect_uris": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "registration_access_token": {
+                    "type": "string"
+                },
+                "registration_client_uri": {
+                    "type": "string"
+                },
+                "request_uris": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "require_auth_time": {
+                    "type": "boolean"
+                },
+                "response_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "sector_identifier_uri": {
+                    "type": "string"
+                },
+                "software_id": {
+                    "type": "string"
+                },
+                "software_version": {
+                    "type": "string"
+                },
+                "subject_type": {
+                    "type": "string"
+                },
+                "token_endpoint_auth_method": {
+                    "type": "string"
+                },
+                "tos_uri": {
+                    "type": "string"
+                }
+            }
+        },
+        "apiv1.ClientRegistrationRequest": {
+            "type": "object"
+        },
+        "apiv1.ClientRegistrationResponse": {
+            "type": "object",
+            "properties": {
+                "application_type": {
+                    "description": "OpenID Connect specific",
+                    "type": "string"
+                },
+                "client_id": {
+                    "type": "string"
+                },
+                "client_id_issued_at": {
+                    "type": "integer"
+                },
+                "client_name": {
+                    "type": "string"
+                },
+                "client_secret": {
+                    "type": "string"
+                },
+                "client_secret_expires_at": {
+                    "description": "0 = never expires, REQUIRED per RFC 7591",
+                    "type": "integer"
+                },
+                "client_uri": {
+                    "type": "string"
+                },
+                "code_challenge_method": {
+                    "description": "PKCE",
+                    "type": "string"
+                },
+                "contacts": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "default_acr_values": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "default_max_age": {
+                    "type": "integer"
+                },
+                "grant_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id_token_signed_response_alg": {
+                    "type": "string"
+                },
+                "initiate_login_uri": {
+                    "type": "string"
+                },
+                "jwks": {},
+                "jwks_uri": {
+                    "type": "string"
+                },
+                "logo_uri": {
+                    "type": "string"
+                },
+                "policy_uri": {
+                    "type": "string"
+                },
+                "redirect_uris": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "registration_access_token": {
+                    "type": "string"
+                },
+                "registration_client_uri": {
+                    "type": "string"
+                },
+                "request_uris": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "require_auth_time": {
+                    "type": "boolean"
+                },
+                "response_types": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "sector_identifier_uri": {
+                    "type": "string"
+                },
+                "software_id": {
+                    "type": "string"
+                },
+                "software_version": {
+                    "type": "string"
+                },
+                "subject_type": {
+                    "type": "string"
+                },
+                "token_endpoint_auth_method": {
+                    "type": "string"
+                },
+                "tos_uri": {
+                    "type": "string"
+                }
+            }
+        },
+        "apiv1.ConfirmCredentialDisplayRequest": {
+            "type": "object",
+            "properties": {
+                "confirmed": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "apiv1.ConfirmCredentialDisplayResponse": {
+            "type": "object",
+            "properties": {
+                "redirect_uri": {
+                    "type": "string"
+                }
+            }
+        },
+        "apiv1.DirectPostRequest": {
+            "type": "object",
+            "required": [
+                "state"
+            ],
+            "properties": {
+                "presentation_submission": {
+                    "description": "For standard direct_post (JSON, can be large)",
+                    "type": "string"
+                },
+                "response": {
+                    "description": "For DC API encrypted JWT response (can be very large)",
+                    "type": "string"
+                },
+                "state": {
+                    "type": "string",
+                    "maxLength": 256
+                },
+                "vp_token": {
+                    "description": "For standard direct_post (JWT, can be very large)",
+                    "type": "string"
+                }
+            }
+        },
+        "apiv1.DirectPostResponse": {
+            "type": "object",
+            "properties": {
+                "redirectURI": {
+                    "type": "string"
+                }
+            }
+        },
+        "apiv1.DiscoveryMetadata": {
+            "type": "object",
+            "properties": {
+                "authorization_endpoint": {
+                    "type": "string"
+                },
+                "claims_supported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "code_challenge_methods_supported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "grant_types_supported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "id_token_signing_alg_values_supported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "issuer": {
+                    "type": "string"
+                },
+                "jwks_uri": {
+                    "type": "string"
+                },
+                "registration_endpoint": {
+                    "description": "RFC 7591",
+                    "type": "string"
+                },
+                "response_types_supported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "scopes_supported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "subject_types_supported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "token_endpoint": {
+                    "type": "string"
+                },
+                "token_endpoint_auth_methods_supported": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "userinfo_endpoint": {
+                    "type": "string"
+                }
+            }
+        },
+        "apiv1.PollSessionResponse": {
+            "type": "object",
+            "properties": {
+                "redirect_uri": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                }
+            }
+        },
+        "apiv1.TokenResponse": {
+            "type": "object",
+            "properties": {
+                "access_token": {
+                    "type": "string"
+                },
+                "expires_in": {
+                    "type": "integer"
+                },
+                "id_token": {
+                    "type": "string"
+                },
+                "refresh_token": {
+                    "type": "string"
+                },
+                "scope": {
+                    "type": "string"
+                },
+                "token_type": {
+                    "type": "string"
+                }
+            }
+        },
+        "apiv1.UpdateClientRequest": {
+            "type": "object"
+        },
+        "apiv1.UpdateSessionPreferenceRequest": {
+            "type": "object",
+            "required": [
+                "session_id"
+            ],
+            "properties": {
+                "session_id": {
+                    "type": "string",
+                    "maxLength": 128
+                },
+                "show_credential_details": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "apiv1.UpdateSessionPreferenceResponse": {
+            "type": "object",
+            "properties": {
+                "success": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "apiv1.UserInfoResponse": {
+            "type": "object",
+            "additionalProperties": {}
+        }
+    }
 }

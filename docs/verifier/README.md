@@ -173,11 +173,17 @@ docker-compose up verifier
 
 ## API Endpoints
 
+### Swagger / OpenAPI
+
+- JSON: `GET http://<verifier-url>/swagger/doc.json`
+- UI: `http://<verifier-url>/swagger/index.html`
+
 ### OIDC Endpoints (for Relying Parties)
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/.well-known/openid-configuration` | GET | OpenID Provider discovery metadata |
+| `/.well-known/oauth-authorization-server` | GET | OAuth authorization server metadata |
 | `/jwks` | GET | JSON Web Key Set for token verification |
 | `/authorize` | GET | Authorization endpoint - initiates authentication |
 | `/token` | POST | Token endpoint - exchanges code for tokens |
@@ -190,18 +196,18 @@ docker-compose up verifier
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/verification/request-object/{session_id}` | GET | Signed request object for wallet |
-| `/verification/direct_post` | POST | Receives VP from wallet |
-| `/verification/callback` | GET | Redirect with authorization code |
-| `/qrcode/{session_id}` | GET | QR code for session |
+| `/verification/oidc-direct_post` | POST | Receives VP from wallet |
+| `/verification/oidc-callback` | GET | Redirect/callback handling for OIDC flow |
+| `/qr/{session_id}` | GET | QR code for session |
 | `/poll/{session_id}` | GET | Poll session status |
 
 ### Session Management Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/session/preference` | PUT | Update session display preferences |
+| `/verification/session-preference` | POST | Update session display preferences |
 | `/verification/display/{session_id}` | GET | Credential display data |
-| `/verification/display/{session_id}/confirm` | POST | Confirm credential display |
+| `/verification/confirm/{session_id}` | POST | Confirm credential display |
 
 ## Integration with Keycloak
 
