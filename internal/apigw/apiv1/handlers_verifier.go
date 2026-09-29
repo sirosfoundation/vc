@@ -48,7 +48,10 @@ func (c *Client) VerificationRequestObject(ctx context.Context, req *Verificatio
 		return "", fmt.Errorf("scope %q is not configured for openid4vp authentication", scope)
 	}
 
-	dcql := buildIssuanceAuthDCQL(vpAuth, c.cfg)
+	dcql, err := buildIssuanceAuthDCQL(vpAuth, c.cfg)
+	if err != nil {
+		return "", err
+	}
 
 	// Persist the DCQL query in the auth context so VerificationDirectPost
 	// can use it for VP Token validation later.
@@ -324,12 +327,13 @@ func (c *Client) VerificationDirectPost(ctx context.Context, req *VerificationDi
 // authenticate the user during OpenID4VP-based issuance. One CredentialQuery
 // per auth scope so the wallet may present any acceptable credential type
 // (e.g. pid OR eduid); each carries its per-scope auth_claims and the
-// scope's canonical vct (VCTM.VCT after ResolveVCTUrls -- for a local scope
-// the hosting URL, for an external scope the file's own vct). That single
-// value is what the credential body carries, what the issuer metadata
-// advertises, and what wallets store as the credential's type tag -- see
-// (*model.Cfg).VCTIdentifiersForScopes.
-func buildIssuanceAuthDCQL(vpAuth *model.OpenID4VPCredentialAuth, cfg *model.Cfg) *openid4vp.DCQL {
+// scope's canonical vct (VCTM.VCT after ResolveVCTUrls -- preserved from the
+// VCTM file when present (both local and external), and back-filled from the
+// /type-metadata/<scope> hosting URL only when a local file left vct empty).
+// That single value is what the credential body carries, what the issuer
+// metadata advertises, and what wallets store as the credential's type tag
+// -- see (*model.Cfg).VCTIdentifiersForScopes.
+func buildIssuanceAuthDCQL(vpAuth *model.OpenID4VPCredentialAuth, cfg *model.Cfg) (*openid4vp.DCQL, error) {
 	credentialQueries := make([]openid4vp.CredentialQuery, 0, len(vpAuth.AuthScopes))
 	options := make([][]string, 0, len(vpAuth.AuthScopes))
 	for _, authScope := range slices.Sorted(maps.Keys(vpAuth.AuthScopes)) {
@@ -340,13 +344,19 @@ func buildIssuanceAuthDCQL(vpAuth *model.OpenID4VPCredentialAuth, cfg *model.Cfg
 				Path: openid4vp.StringPath(claim),
 			})
 		}
+		// By format, so an mso_mdoc auth scope is constrained by its doctype
+		// rather than sent out with a vct_values no mdoc credential carries.
+		// An auth scope naming no configured credential resolves to a nil
+		// entry here, which DCQLMetaQuery reports rather than dereferences.
+		meta, ok := cfg.GetCredentialMetadata(authScope).DCQLMetaQuery()
+		if !ok {
+			return nil, fmt.Errorf("auth scope %q has no usable DCQL meta constraint (format %q); check credential_metadata", authScope, cfg.GetFormatForScope(authScope))
+		}
 		credentialQueries = append(credentialQueries, openid4vp.CredentialQuery{
-			ID:       authScope,
-			Format:   cfg.GetFormatForScope(authScope),
-			Multiple: false,
-			Meta: openid4vp.MetaQuery{
-				VCTValues: cfg.VCTIdentifiersForScopes([]string{authScope}),
-			},
+			ID:                                authScope,
+			Format:                            cfg.GetFormatForScope(authScope),
+			Multiple:                          false,
+			Meta:                              meta,
 			RequireCryptographicHolderBinding: new(false),
 			Claims:                            scopeClaimQueries,
 		})
@@ -360,5 +370,5 @@ func buildIssuanceAuthDCQL(vpAuth *model.OpenID4VPCredentialAuth, cfg *model.Cfg
 				Required: new(false),
 			},
 		},
-	}
+	}, nil
 }

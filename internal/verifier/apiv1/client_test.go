@@ -1,11 +1,14 @@
 package apiv1
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"testing"
 
+	"github.com/SUNET/vc/pkg/logger"
 	"github.com/SUNET/vc/pkg/model"
+	"github.com/SUNET/vc/pkg/openid4vp"
 	"github.com/SUNET/vc/pkg/sdjwtvc"
 
 	"github.com/stretchr/testify/assert"
@@ -362,6 +365,155 @@ func TestClient_createDCQLQuery(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 				require.NotNil(t, dcql)
+			}
+		})
+	}
+}
+
+// sdJWTScope is a dc+sd-jwt credential_metadata entry whose VCTM declares its
+// own vct. VCTURL is deliberately left unset: dcqlClientFor runs ResolveVCTUrls,
+// which derives it exactly as the server does at startup, so these fixtures
+// exercise the real resolution rather than a hand-built approximation of it.
+func sdJWTScope(vct string) *model.CredentialMetadata {
+	return &model.CredentialMetadata{
+		Format:       "dc+sd-jwt",
+		VCTMFilePath: "/path/to/vctm",
+		VCTM:         &sdjwtvc.VCTM{VCT: vct},
+	}
+}
+
+// w3cScope is the same thing in a format DCQL has no expressible constraint for.
+func w3cScope(vct string) *model.CredentialMetadata {
+	cm := sdJWTScope(vct)
+	cm.Format = "ldp_vc"
+	return cm
+}
+
+// dcqlClientFor builds a verifier client over the given credential_metadata and
+// presets, with VCT URLs resolved as the server resolves them at startup.
+func dcqlClientFor(t *testing.T, credMeta map[string]*model.CredentialMetadata, presets map[string]model.PresetDefinition) *Client {
+	t.Helper()
+
+	cfg := &model.Cfg{
+		Common:   &model.Common{CredentialMetadata: credMeta},
+		Verifier: &model.Verifier{Presets: presets},
+	}
+	require.NoError(t, cfg.ResolveVCTUrls("https://apigw.example"))
+
+	client, _ := CreateTestClientWithMock(t, cfg)
+	client.cfg = cfg
+	return client
+}
+
+// uncoveredScopes checks that every requested scope has a query.
+// unclaimedRequiredQueries checks the other direction, and both are needed:
+// verification iterates over the requested SCOPES and looks up each one's
+// query, so a query nothing maps to is never visited and its vp_token is
+// never validated. The session would then be accepted having verified less
+// than it asked the wallet for.
+func TestUnclaimedRequiredQueries(t *testing.T) {
+	q := func(id, vct string) openid4vp.CredentialQuery {
+		return openid4vp.CredentialQuery{
+			ID:     id,
+			Format: "vc+sd-jwt",
+			Meta:   openid4vp.MetaQuery{VCTValues: []string{vct}},
+		}
+	}
+	yes := true
+	no := false
+
+	tests := []struct {
+		name    string
+		dcql    *openid4vp.DCQL
+		scopes  []string
+		wantAny bool
+	}{
+		{
+			name:    "nil query decides nothing",
+			dcql:    nil,
+			scopes:  []string{"pid"},
+			wantAny: false,
+		},
+		{
+			// The default-token path attributes an unlabelled credential to
+			// the sole requested scope, so one query is always reachable.
+			name:    "single query is reachable without a mapping",
+			dcql:    &openid4vp.DCQL{Credentials: []openid4vp.CredentialQuery{q("anything", "https://example.org/other")}},
+			scopes:  []string{"pid"},
+			wantAny: false,
+		},
+		{
+			// The reported case: a second query nothing claims.
+			name: "second query nothing claims is flagged",
+			dcql: &openid4vp.DCQL{Credentials: []openid4vp.CredentialQuery{
+				q("a", "https://example.org/pid"),
+				q("b", "https://example.org/unrequested"),
+			}},
+			scopes:  []string{"pid"},
+			wantAny: true,
+		},
+		{
+			// Several options are alternatives ("A or B"), so neither is
+			// required in particular and an unclaimed id may be exactly right.
+			name: "a set offering alternatives is left alone",
+			dcql: &openid4vp.DCQL{
+				Credentials: []openid4vp.CredentialQuery{
+					q("a", "https://example.org/pid"),
+					q("b", "https://example.org/unrequested"),
+				},
+				CredentialSets: []openid4vp.CredentialSetQuery{
+					{Options: [][]string{{"a"}, {"b"}}, Required: &yes},
+				},
+			},
+			scopes:  []string{"pid"},
+			wantAny: false,
+		},
+		{
+			// A required set with ONE option requires every id in it:
+			// Options [["a","b"]] means both, not either. Skipping every
+			// query that had any credential_sets missed exactly this.
+			name: "a required single option requires all of its ids",
+			dcql: &openid4vp.DCQL{
+				Credentials: []openid4vp.CredentialQuery{
+					q("a", "https://example.org/pid"),
+					q("b", "https://example.org/unrequested"),
+				},
+				CredentialSets: []openid4vp.CredentialSetQuery{
+					{Options: [][]string{{"a", "b"}}, Required: &yes},
+				},
+			},
+			scopes:  []string{"pid"},
+			wantAny: true,
+		},
+		{
+			// An OPTIONAL set demands nothing, however it is shaped.
+			name: "an optional single option is left alone",
+			dcql: &openid4vp.DCQL{
+				Credentials: []openid4vp.CredentialQuery{
+					q("a", "https://example.org/pid"),
+					q("b", "https://example.org/unrequested"),
+				},
+				CredentialSets: []openid4vp.CredentialSetQuery{
+					{Options: [][]string{{"a", "b"}}, Required: &no},
+				},
+			},
+			scopes:  []string{"pid"},
+			wantAny: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := &Client{
+				log: logger.NewSimple("test"),
+				cfg: &model.Cfg{Common: &model.Common{CredentialMetadata: map[string]*model.CredentialMetadata{}}},
+			}
+			got := c.unclaimedRequiredQueries(context.Background(), tt.dcql, tt.scopes)
+			if tt.wantAny && len(got) == 0 {
+				t.Fatal("want an unclaimed query to be reported")
+			}
+			if !tt.wantAny && len(got) > 0 {
+				t.Fatalf("want nothing reported, got %v", got)
 			}
 		})
 	}

@@ -716,6 +716,10 @@ func TestResolveVCTUrls_AutoPopulatesVCT(t *testing.T) {
 					Format:       "dc+sd-jwt",
 					VCTM:         &sdjwtvc.VCTM{Name: "test"},
 					VCTMRaw:      rawBytes,
+					// Pre-seed a stale integrity to prove ResolveVCTUrls refreshes it
+					// when it rewrites VCTMRaw; otherwise vct#integrity in an issued
+					// credential would disagree with the served /type-metadata bytes.
+					Integrity: "sha256-STALE_MUST_BE_REPLACED",
 				},
 			},
 		},
@@ -730,6 +734,12 @@ func TestResolveVCTUrls_AutoPopulatesVCT(t *testing.T) {
 	assert.Equal(t, "https://apigw.example.com/type-metadata/ehic", meta.VCTURL)
 	assert.Contains(t, string(meta.VCTMRaw), `"vct"`,
 		"VCTMRaw should contain the injected vct field")
+
+	wantIntegrity, err := meta.VCTM.SRIIntegrity(meta.VCTMRaw)
+	require.NoError(t, err)
+	assert.Equal(t, wantIntegrity, meta.Integrity,
+		"Integrity must be recomputed from the rewritten VCTMRaw bytes")
+	assert.NotEqual(t, "sha256-STALE_MUST_BE_REPLACED", meta.Integrity)
 }
 
 func TestResolveVCTUrls_PreservesExplicitVCT(t *testing.T) {
@@ -853,7 +863,7 @@ func TestOAuthServerLoadAndSignMetadata(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := t.Context()
-			metadata := tt.server.GenerateMetadata(ctx, tt.issuerURL)
+			metadata := tt.server.GenerateMetadata(ctx, tt.issuerURL, false, nil)
 
 			assert.NotNil(t, metadata)
 			assert.Empty(t, metadata.SignedMetadata, "SignedMetadata should be empty before signing")
