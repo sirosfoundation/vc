@@ -213,7 +213,7 @@ apigw:
           authentic_source: "Skatteverket"
           auth_scopes:
             pid:
-              auth_claims: ["given_name", "family_name", "birth_date"]
+              auth_claims: [[given_name], [family_name], [birth_date]]
         pid_mdoc:
           auth_provider: oidc
           authentic_source: "Skatteverket"
