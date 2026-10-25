@@ -20,8 +20,9 @@ func checkCommitmentClaim(meta *model.CredentialMetadata, entry openid4vci.Auxil
 			return err
 		}
 	}
-	if !entry.Path.SelectsOne() {
-		return fmt.Errorf("path %s names no single claim to hold the commitment", entry.Path)
+	// The issuer writes the commitment where the document holds no value.
+	if err := entry.Path.CheckFill(); err != nil {
+		return err
 	}
 	switch {
 	case meta.Format == openid4vp.FormatMsoMdoc:
