@@ -3,6 +3,7 @@ package model
 import (
 	"testing"
 
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/mdoc"
 	"github.com/SUNET/vc/pkg/openid4vp"
 	"github.com/SUNET/vc/pkg/sdjwtvc"
@@ -352,12 +353,8 @@ func TestOnlyFormatsWithAccountedSigningLayersAreSupported(t *testing.T) {
 // that is the whole value at stake: a stable identifier for its holder,
 // handed to every verifier unconditionally.
 func TestSDJWTCommitmentsMustBeSelectivelyDisclosable(t *testing.T) {
-	path := func(segments ...string) []*string {
-		out := make([]*string, 0, len(segments))
-		for _, s := range segments {
-			out = append(out, &s)
-		}
-		return out
+	path := func(segments ...string) claimpath.Pointer {
+		return claimpath.Keys(segments[0], segments[1:]...)
 	}
 	vctm := &sdjwtvc.VCTM{
 		VCT: "urn:example:nym_auth:1",
@@ -414,7 +411,7 @@ func TestSDJWTCommitmentsMustBeSelectivelyDisclosable(t *testing.T) {
 // reserved-claim check - so its commitment could be signed in the clear,
 // or at a path the builder overwrites, with nothing reporting either.
 func TestEverySDJWTSpellingGetsTheSDJWTChecks(t *testing.T) {
-	sd := func(p string) []*string { return []*string{&p} }
+	sd := func(p string) claimpath.Pointer { return claimpath.Keys(p) }
 	vctm := &sdjwtvc.VCTM{
 		VCT:    "urn:example:nym_auth:1",
 		Claims: []sdjwtvc.Claim{{Path: sd("ssc"), SD: "always"}},
@@ -453,16 +450,13 @@ func TestEverySDJWTSpellingGetsTheSDJWTChecks(t *testing.T) {
 // it in the clear. The comparison meant to catch that must not reintroduce
 // it.
 func TestVCTMPathSegmentsAreNotFlattened(t *testing.T) {
-	literal := "a.b"
-	outer, inner := "a", "b"
-
 	declaresLiteralKey := &sdjwtvc.VCTM{
 		VCT:    "urn:example:1",
-		Claims: []sdjwtvc.Claim{{Path: []*string{&literal}, SD: "always"}},
+		Claims: []sdjwtvc.Claim{{Path: claimpath.Keys("a.b"), SD: "always"}},
 	}
 	declaresNested := &sdjwtvc.VCTM{
 		VCT:    "urn:example:1",
-		Claims: []sdjwtvc.Claim{{Path: []*string{&outer, &inner}, SD: "always"}},
+		Claims: []sdjwtvc.Claim{{Path: claimpath.Keys("a", "b"), SD: "always"}},
 	}
 	meta := &CredentialMetadata{
 		Format:      openid4vp.FormatSDJWTVC,
@@ -492,7 +486,7 @@ func TestVCTMPathSegmentsAreNotFlattened(t *testing.T) {
 // checked only at the root; that wording was never true of _sd, and the
 // test had been documenting the wrong failure for it.
 func TestDisclosureMachineryClaimsAreReservedEvenWhenDeclared(t *testing.T) {
-	always := func(p string) sdjwtvc.Claim { return sdjwtvc.Claim{Path: []*string{&p}, SD: "always"} }
+	always := func(p string) sdjwtvc.Claim { return sdjwtvc.Claim{Path: claimpath.Keys(p), SD: "always"} }
 	vctm := &sdjwtvc.VCTM{
 		VCT:    "urn:example:1",
 		Claims: []sdjwtvc.Claim{always("_sd_alg"), always("_sd")},
@@ -571,12 +565,8 @@ func TestStructuralNamesDoNotLeakIntoOtherFormats(t *testing.T) {
 // exist for any verifier that reconstructs the claims. Nothing fails
 // anywhere; the commitment is absent.
 func TestNestedSDAlgCommitmentIsRefused(t *testing.T) {
-	segment := func(segments ...string) []*string {
-		out := make([]*string, 0, len(segments))
-		for _, s := range segments {
-			out = append(out, &s)
-		}
-		return out
+	segment := func(segments ...string) claimpath.Pointer {
+		return claimpath.Keys(segments[0], segments[1:]...)
 	}
 	vctm := &sdjwtvc.VCTM{
 		VCT: "urn:example:1",
@@ -613,12 +603,8 @@ func TestNestedSDAlgCommitmentIsRefused(t *testing.T) {
 // fails with "invalid path: non-object" - after issuance has allocated a
 // status-list entry, so every attempt burns one.
 func TestDisclosableDescendantOfACommitmentTargetIsRefused(t *testing.T) {
-	segment := func(segments ...string) []*string {
-		out := make([]*string, 0, len(segments))
-		for _, s := range segments {
-			out = append(out, &s)
-		}
-		return out
+	segment := func(segments ...string) claimpath.Pointer {
+		return claimpath.Keys(segments[0], segments[1:]...)
 	}
 	meta := func(target string) *CredentialMetadata {
 		return &CredentialMetadata{
@@ -636,7 +622,7 @@ func TestDisclosableDescendantOfACommitmentTargetIsRefused(t *testing.T) {
 	}
 	_, err := meta("identity").ResolveCommitmentTargets(CredentialSchemas{VCTM: withDescendant})
 	require.Error(t, err, "a disclosure beneath the target cannot survive a commitment there")
-	assert.Contains(t, err.Error(), "identity.name")
+	assert.Contains(t, err.Error(), `["identity","name"]`)
 	assert.Contains(t, err.Error(), "non-object")
 
 	// A MANDATORY descendant is refused however it is disclosed, or not

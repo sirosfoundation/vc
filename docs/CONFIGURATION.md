@@ -1857,19 +1857,19 @@ as the human-readable label.
 
 > **Path:** `.verifier.presets.<preset label>.credentials.<key>.claims[]`, `.verifier.presets.<preset label>.credentials.<key>.exclude_claims[]`
 
-| Field  | Type       | Description         | Example                                  | Default | Required |
-| ------ | ---------- | ------------------- | ---------------------------------------- | ------- | -------- |
-| `path` | `[]string` | Claim path segments | `["birthdate"], ["address", "locality"]` | -       | Yes      |
+| Field  | Type     | Description                       | Example                                                           | Default | Required |
+| ------ | -------- | --------------------------------- | ----------------------------------------------------------------- | ------- | -------- |
+| `path` | `object` | Claims path pointer of the claim. | `["birthdate"], ["address", "locality"], ["nationalities", null]` | -       | Yes      |
 
 ### `validations` entry
 
 > **Path:** `.verifier.presets.<preset label>.credentials.<key>.validations[]`
 
-| Field   | Type       | Description                                     | Example         | Default | Required |
-| ------- | ---------- | ----------------------------------------------- | --------------- | ------- | -------- |
-| `rule`  | `string`   | Validation rule to apply, e.g., "age_over".     | `"age_over"`    | -       | Yes      |
-| `path`  | `[]string` | Claim path to validate, e.g., ["birthdate"].    | `["birthdate"]` | -       | Yes      |
-| `value` | `object`   | Threshold or expected value for the validation. | `18`            | -       | Yes      |
+| Field   | Type     | Description                                                        | Example         | Default | Required |
+| ------- | -------- | ------------------------------------------------------------------ | --------------- | ------- | -------- |
+| `rule`  | `string` | Validation rule to apply, e.g., "age_over".                        | `"age_over"`    | -       | Yes      |
+| `path`  | `object` | Claims path pointer of the claim to validate, e.g., ["birthdate"]. | `["birthdate"]` | -       | Yes      |
+| `value` | `object` | Threshold or expected value for the validation.                    | `18`            | -       | Yes      |
 
 ### `zk_system_type` entry
 

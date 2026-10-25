@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/mdoc"
 	"github.com/SUNET/vc/pkg/openid4vp"
 	"github.com/SUNET/vc/pkg/sdjwtvc"
@@ -462,8 +463,8 @@ func checkNoDisclosableDescendants(vctm *sdjwtvc.VCTM, element string) error {
 		}
 		switch {
 		case claim.SD == "always":
-			return fmt.Errorf("the type metadata also discloses %q beneath it, and a commitment replaces that object with a string, so the issuer fails with \"invalid path: non-object\" after a status-list entry has been allocated",
-				flattenClaimPath(claim.Path))
+			return fmt.Errorf("the type metadata also discloses %s beneath it, and a commitment replaces that object with a string, so the issuer fails with \"invalid path: non-object\" after a status-list entry has been allocated",
+				claim.Path)
 		case claim.Mandatory:
 			// A different check, reached by a different route, with the
 			// same cost. ValidateDocument requires every mandatory claim
@@ -475,8 +476,8 @@ func checkNoDisclosableDescendants(vctm *sdjwtvc.VCTM, element string) error {
 			// "always", reasoning that MakeCredential processes nothing
 			// else. True, and beside the point: the document validator
 			// rejects it before that matters.
-			return fmt.Errorf("the type metadata marks %q beneath it mandatory, and a commitment replaces that object with a string, so document validation fails with \"mandatory claim is missing\" after a status-list entry has been allocated",
-				flattenClaimPath(claim.Path))
+			return fmt.Errorf("the type metadata marks %s beneath it mandatory, and a commitment replaces that object with a string, so document validation fails with \"mandatory claim is missing\" after a status-list entry has been allocated",
+				claim.Path)
 		}
 	}
 	return nil
@@ -485,31 +486,9 @@ func checkNoDisclosableDescendants(vctm *sdjwtvc.VCTM, element string) error {
 // claimPathDescends reports whether a VCTM claim path lies strictly
 // beneath the configured one, comparing segment by segment for the same
 // reason claimPathMatches does.
-func claimPathDescends(vctmPath []*string, configured string) bool {
+func claimPathDescends(vctmPath claimpath.Pointer, configured string) bool {
 	segments := strings.Split(configured, ".")
-	if len(vctmPath) <= len(segments) {
-		return false
-	}
-	for i, segment := range segments {
-		if vctmPath[i] == nil || *vctmPath[i] != segment {
-			return false
-		}
-	}
-	return true
-}
-
-// flattenClaimPath renders a VCTM path for an error message. A nil
-// segment is the array wildcard, which has no configured spelling.
-func flattenClaimPath(path []*string) string {
-	parts := make([]string, 0, len(path))
-	for _, segment := range path {
-		if segment == nil {
-			parts = append(parts, "[]")
-			continue
-		}
-		parts = append(parts, *segment)
-	}
-	return strings.Join(parts, ".")
+	return vctmPath.Len() > len(segments) && vctmPath.HasPrefix(claimpath.Keys(segments[0], segments[1:]...))
 }
 
 // claimPathMatches compares a VCTM claim path with a configured one,
@@ -524,19 +503,11 @@ func flattenClaimPath(path []*string) string {
 // stays in the clear, which is the failure this whole check exists to
 // prevent, reintroduced by the comparison meant to catch it.
 //
-// A nil segment selects every element of an array and has no spelling in
-// a configured path, so such a claim matches nothing here.
-func claimPathMatches(vctmPath []*string, configured string) bool {
+// A null or an index has no spelling in a configured path, so such a
+// claim matches nothing here.
+func claimPathMatches(vctmPath claimpath.Pointer, configured string) bool {
 	segments := strings.Split(configured, ".")
-	if len(vctmPath) != len(segments) {
-		return false
-	}
-	for i, segment := range vctmPath {
-		if segment == nil || *segment != segments[i] {
-			return false
-		}
-	}
-	return true
+	return vctmPath.Equal(claimpath.Keys(segments[0], segments[1:]...))
 }
 
 func orDefault(value, fallback string) string {
