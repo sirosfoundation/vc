@@ -16,7 +16,8 @@ import (
 //
 //   - A claim of a presented credential: an mdoc claim splits at its last
 //     dot into [namespace, element], and a name without one is an element
-//     of org.iso.18013.5.1. A JSON-based claim splits on dots.
+//     of org.iso.18013.5.1. A JSON-based claim splits on dots. A pointer
+//     into a presented credential has no index (claimpath.Presented).
 //   - A claim of the issued credential's document: a JSON-based claim
 //     splits on dots. An mdoc claim is the element the MDDL declares in one
 //     namespace, or a document key the MDDL does not declare.
@@ -24,9 +25,15 @@ import (
 //     claims split on dots.
 //
 // A derivation reads its source data and writes the issued document; see
-// primitives.ResolveDerivations. The credential metadata schemas must be
+// primitives.ResolveDerivations. A verifier preset's validation reads one
+// claim of a presented credential. The credential metadata schemas must be
 // loaded.
 func (c *Cfg) ResolveClaimPaths() error {
+	if c.Verifier != nil {
+		if err := checkPresetValidations(c.Verifier.Presets); err != nil {
+			return err
+		}
+	}
 	if c.APIGW == nil {
 		return nil
 	}
@@ -177,8 +184,7 @@ func (c *Cfg) resolveAuthScope(entry *AuthScopeEntry, scope, authScope string) e
 }
 
 // resolveIdentityClaims reads the auth claims and identity attribute
-// renames in the presented credential, and requires each auth claim to
-// name an identity attribute.
+// renames in the presented credential.
 func resolveIdentityClaims(entry *AuthScopeEntry, presented claimpath.Shape) error {
 	for i := range entry.AuthClaims {
 		if err := presented.ResolveOne(&entry.AuthClaims[i]); err != nil {
@@ -188,11 +194,6 @@ func resolveIdentityClaims(entry *AuthScopeEntry, presented claimpath.Shape) err
 	for i := range entry.IdentityAttributes {
 		if err := presented.ResolveOne(&entry.IdentityAttributes[i].Path); err != nil {
 			return fmt.Errorf("identity_attributes[%d].path: %w", i, err)
-		}
-	}
-	for i, claim := range entry.AuthClaims {
-		if _, ok := entry.IdentityAttributes.For(claim); !ok {
-			return fmt.Errorf("auth_claims[%d]: %s ends in no key, so it needs an identity_attributes entry", i, claim)
 		}
 	}
 	return nil
@@ -298,6 +299,32 @@ func resolveAttributeMapping(mapping AttributeMapping, shape claimpath.Shape) er
 			return fmt.Errorf("%s.claim: %w", attribute, err)
 		}
 		mapping[attribute] = config
+	}
+	return nil
+}
+
+// checkPresetValidations checks that each validation of a verifier preset
+// reads one claim of a presented credential.
+func checkPresetValidations(presets map[string]PresetDefinition) error {
+	for _, label := range slices.Sorted(maps.Keys(presets)) {
+		credentials := presets[label].Credentials
+		for _, scope := range slices.Sorted(maps.Keys(credentials)) {
+			if err := checkScopeValidations(credentials[scope]); err != nil {
+				return fmt.Errorf("verifier.presets.%s.credentials.%s.%w", label, scope, err)
+			}
+		}
+	}
+	return nil
+}
+
+func checkScopeValidations(scope *VerificationPresetScope) error {
+	if scope == nil {
+		return nil
+	}
+	for i, validation := range scope.Validations {
+		if _, err := claimpath.Presented().LocateOne(validation.Path); err != nil {
+			return fmt.Errorf("validations[%d].path: %w", i, err)
+		}
 	}
 	return nil
 }

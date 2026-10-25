@@ -129,7 +129,11 @@ func (sd *sdJWT) resolveKey(n map[string]any, path []claimpath.Component, need [
 }
 
 // resolveElements continues a path whose next component is null or an
-// index, in an array.
+// index, in an array. An index counts the entries of the array as issued,
+// each value and each element digest, whether the wallet holds its
+// disclosure or not (SD-JWT VC section 5.6), so the verifier counts the
+// same positions in the presentation. An entry without a disclosure, a
+// decoy among them, has no value to select.
 func (sd *sdJWT) resolveElements(n []any, path []claimpath.Component, need []string) []claimMatch {
 	if _, isKey := path[0].KeyName(); isKey {
 		return nil
@@ -144,7 +148,6 @@ func (sd *sdJWT) resolveElements(n []any, path []claimpath.Component, need []str
 		if disc, ok := sd.arrayElement(element); ok {
 			child, elementNeed = disc.value, append(slices.Clone(need), disc.raw)
 		} else if isArrayPlaceholder(element) {
-			// An undisclosed element or a decoy: there is no value to match.
 			continue
 		}
 		matches = append(matches, sd.resolve(child, path[1:], elementNeed)...)

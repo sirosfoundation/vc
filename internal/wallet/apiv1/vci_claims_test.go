@@ -232,3 +232,27 @@ func TestSelectClaims_UndisclosedArrayPlaceholderIsNotAValue(t *testing.T) {
 	assert.Equal(t, map[string]bool{"given": true}, selected,
 		"the unsatisfiable option must not be chosen over a valid alternative")
 }
+
+// An index counts every entry of the array as issued, an element digest
+// without a disclosure included (SD-JWT VC section 5.6): in [decoy, "FR"],
+// "FR" is element 1, and element 0 has no value.
+func TestSelectClaims_IndexCountsTheArrayAsIssued(t *testing.T) {
+	fr, digest := disclosure(t, "salt-fr", "FR")
+	payload, err := json.Marshal(map[string]any{
+		"vct":           "urn:test",
+		"nationalities": []any{map[string]any{"...": "decoy-digest"}, map[string]any{"...": digest}},
+	})
+	require.NoError(t, err)
+	raw := "eyJhbGciOiJFUzI1NiJ9." + base64.RawURLEncoding.EncodeToString(payload) + ".sig~" + fr + "~"
+
+	got, ok := selectClaims(raw, openid4vp.CredentialQuery{
+		Claims: []openid4vp.ClaimQuery{{Path: claimpath.New(claimpath.Key("nationalities"), claimpath.Index(1))}},
+	})
+	require.True(t, ok)
+	assert.Equal(t, []string{fr}, presentedDisclosures(got))
+
+	_, ok = selectClaims(raw, openid4vp.CredentialQuery{
+		Claims: []openid4vp.ClaimQuery{{Path: claimpath.New(claimpath.Key("nationalities"), claimpath.Index(0))}},
+	})
+	assert.False(t, ok)
+}

@@ -37,11 +37,11 @@ type IdentityMatch struct {
 	// Claims lists the claims of the presented credential, each with the
 	// test it must pass.
 	//
-	// A path is a claims path pointer, or a dotted claim name read the way
-	// the presented credential's format reads it - nested for SD-JWT VC,
-	// "<namespace>.<element>" for mdoc - so a caller writes the same path
-	// it would write anywhere else in this API. The earlier form, an
-	// object from dotted claim names to tests, is read too.
+	// A path is a claims path pointer of keys, or a dotted claim name read
+	// the way the presented credential's format reads it - nested for
+	// SD-JWT VC, "<namespace>.<element>" for mdoc - so a caller writes the
+	// same path it would write anywhere else in this API. The earlier
+	// form, an object from dotted claim names to tests, is read too.
 	Claims ClaimMatches `json:"claims" bson:"claims" validate:"required,min=1"`
 }
 
@@ -86,15 +86,27 @@ func (m *IdentityMatch) Validate() error {
 	}
 
 	for _, claim := range m.Claims {
-		_, pending := claim.Path.Pending()
-		switch {
-		case claim.Path.IsZero():
-			return fmt.Errorf("identity match: a claim path is empty")
-		case !pending && !claim.Path.SelectsOne():
-			return fmt.Errorf("identity match: claim %s selects every element of an array; a match compares one claim", claim.Path)
-		case claim.Equals == "":
-			return fmt.Errorf("identity match: claim %s has no comparison; the only one supported is \"equals\", and it may not be empty", claim.Path)
+		if err := validateClaimMatch(claim); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// validateClaimMatch refuses a claim match that has no comparison, or
+// whose path names no single claim of a presented credential.
+func validateClaimMatch(claim ClaimMatch) error {
+	_, pending := claim.Path.Pending()
+	switch {
+	case claim.Path.IsZero():
+		return fmt.Errorf("identity match: a claim path is empty")
+	case claim.Equals == "":
+		return fmt.Errorf("identity match: claim %s has no comparison; the only one supported is \"equals\", and it may not be empty", claim.Path)
+	case pending:
+		return nil
+	}
+	if _, err := claimpath.Presented().LocateOne(claim.Path); err != nil {
+		return fmt.Errorf("identity match: a match compares one claim of the presented credential: %w", err)
 	}
 	return nil
 }

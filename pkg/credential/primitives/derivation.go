@@ -23,7 +23,7 @@ import (
 //
 // Each list entry under a scope's `derivations` field is keyed by primitive name (e.g. `age_over_thresholds:` or `lowercase: { input: [email] }`). The subsections below catalog the primitives and their parameters.
 //
-// Every claim a primitive reads or writes is a claims path pointer (OpenID4VP 1.0 section 7). An output is a claim of the issued credential's document. An input is a claim of the source data - the presented credential for a presentation source, the document otherwise - and a claim of the issued document when an earlier derivation of the list writes it or a claim above it. A dotted string is read the same way: an mdoc output names the element its MDDL declares, or a document key it does not declare.
+// Every claim a primitive reads or writes is a claims path pointer (OpenID4VP 1.0 section 7). An output is a claim of the issued credential's document. An input is a claim of the source data - the presented credential for a presentation source, the document otherwise - and a claim of the issued document when an earlier derivation of the list writes it or a claim above it. A dotted string is read the same way: an mdoc output names the element its MDDL declares, or a document key it does not declare. A claim of a presented credential has no index, since the presented claims drop the array elements the holder did not disclose. An output with an index writes into an element the document holds.
 type Derivation struct {
 	// AgeOverThresholds emits two boolean claims per configured threshold
 	// N from an ISO YYYY-MM-DD birthdate: age_over_N (completed years at

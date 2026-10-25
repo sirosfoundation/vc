@@ -266,6 +266,11 @@ func (p Pointer) SelectsOne() bool {
 	return p.dotted == "" && len(p.components) > 0 && !slices.ContainsFunc(p.components, Component.IsAll)
 }
 
+// hasIndex reports whether a pointer has an index component.
+func (p Pointer) hasIndex() bool {
+	return slices.ContainsFunc(p.components, func(c Component) bool { return c.kind == indexKind })
+}
+
 // Append returns p extended with components.
 func (p Pointer) Append(components ...Component) Pointer {
 	return Pointer{components: append(slices.Clone(p.components), components...), dotted: p.dotted}
