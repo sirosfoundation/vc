@@ -2982,24 +2982,16 @@ func (c *CredentialMetadata) loadVCTM(ctx context.Context, scope string, registr
 		rawBytes = resolved.Data
 	}
 
-	var vctm sdjwtvc.VCTM
-	if err := json.Unmarshal(rawBytes, &vctm); err != nil {
-		return fmt.Errorf("failed to unmarshal VCTM for scope %s: %w", scope, err)
-	}
-
-	// A literal "null" is valid JSON and unmarshals into a zero VCTM without
-	// error, so the scope would load and advertise and then fail every
-	// issuance at parseVCTM - after a successful /token. Refuse it here.
-	var doc map[string]json.RawMessage
-	if err := json.Unmarshal(rawBytes, &doc); err != nil || doc == nil {
-		return fmt.Errorf("VCTM for scope %s is not a JSON object", scope)
+	vctm, err := decodeVCTM(scope, rawBytes)
+	if err != nil {
+		return err
 	}
 
 	// Swap cached data under write lock so concurrent readers see a
 	// consistent snapshot.
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.VCTM = &vctm
+	c.VCTM = vctm
 	c.Integrity, err = vctm.SRIIntegrity(rawBytes)
 	if err != nil {
 		return fmt.Errorf("failed to compute VCTM integrity for scope %s: %w", scope, err)
@@ -3019,6 +3011,27 @@ func (c *CredentialMetadata) loadVCTM(ctx context.Context, scope string, registr
 	c.VCTMRaw = rawBytes
 
 	return nil
+}
+
+// decodeVCTM reads the VCTM document of a scope, and refuses one whose
+// claims contradict each other (sdjwtvc.VCTM.ClaimTree).
+func decodeVCTM(scope string, rawBytes []byte) (*sdjwtvc.VCTM, error) {
+	var vctm sdjwtvc.VCTM
+	if err := json.Unmarshal(rawBytes, &vctm); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal VCTM for scope %s: %w", scope, err)
+	}
+
+	// A literal "null" is valid JSON and unmarshals into a zero VCTM without
+	// error, so the scope would load and advertise and then fail every
+	// issuance at parseVCTM - after a successful /token. Refuse it here.
+	var doc map[string]json.RawMessage
+	if err := json.Unmarshal(rawBytes, &doc); err != nil || doc == nil {
+		return nil, fmt.Errorf("VCTM for scope %s is not a JSON object", scope)
+	}
+	if _, err := vctm.ClaimTree(); err != nil {
+		return nil, fmt.Errorf("VCTM for scope %s: %w", scope, err)
+	}
+	return &vctm, nil
 }
 
 func (c *CredentialMetadata) loadMDDLSchema(ctx context.Context, scope string, registry ts11client.Client) error {
