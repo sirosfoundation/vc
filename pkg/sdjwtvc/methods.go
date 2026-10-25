@@ -213,6 +213,13 @@ func (c *Client) BuildCredentialWithSigner(ctx context.Context, issuer string, s
 // Per section 4.2.5: decoy digests obscure the actual number of claims.
 // Use decoyCount = 0 for no decoy digests (standard behavior).
 func (c *Client) MakeCredential(hashMethod hash.Hash, data map[string]any, vctm *VCTM, decoyCount int) (map[string]any, []string, error) {
+	// Two claims that select one array element would disclose it twice.
+	// The second disclosure wraps the first, no digest references the
+	// first, and a verifier rejects the credential (RFC 9901 section 7.1,
+	// step 5).
+	if _, err := vctm.ClaimTree(); err != nil {
+		return nil, nil, fmt.Errorf("type metadata: %w", err)
+	}
 	disclosures := []string{}
 
 	// Set hash algorithm claim (section 4.1.1)

@@ -137,3 +137,103 @@ func TestCheckResolved(t *testing.T) {
 		t.Fatalf("CheckResolved() = %v on resolved pointers", err)
 	}
 }
+
+// TestNewTreeRefusals has one fixture per contradiction OpenID4VCI 1.0
+// Appendix B.3 names, the pointer into a JSON object that starts with no
+// key, and an unset pointer.
+func TestNewTreeRefusals(t *testing.T) {
+	tests := []struct {
+		name     string
+		pointers []string
+	}{
+		{"a claim addressed twice", []string{`["a","b"]`, `["a","b"]`}},
+		{"null and an index into one array", []string{`["a",null]`, `["a",0,"b"]`}},
+		{"an array and an object", []string{`["a",0]`, `["a","b"]`}},
+		{"an object and an array", []string{`["a","b"]`, `["a",null]`}},
+		{"a pointer that starts with null", []string{`[null,"a"]`}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			pointers := make([]Pointer, len(tt.pointers))
+			for i, text := range tt.pointers {
+				pointers[i] = mustPointer(t, text)
+			}
+			if _, err := NewTree(pointers); !errors.Is(err, ErrConflict) {
+				t.Fatalf("NewTree() error = %v, want %v", err, ErrConflict)
+			}
+		})
+	}
+	if _, err := NewTree([]Pointer{{}}); err == nil {
+		t.Fatal("NewTree() accepted an unset pointer")
+	}
+}
+
+// TestTreeFilter checks the filter against documents whose filtered form
+// follows by hand from the rule that an index points at the same element
+// before and after filtering.
+func TestTreeFilter(t *testing.T) {
+	tests := []struct {
+		name     string
+		pointers []string
+		doc      string
+		want     string
+	}{
+		{"an object keeps its declared keys", []string{`["address","locality"]`}, `{"address":{"locality":"Milliways","street":"42 Market Street"},"name":"Arthur Dent"}`, `{"address":{"locality":"Milliways"}}`},
+		{"a declared claim keeps its whole value", []string{`["nationalities"]`, `["nationalities",1]`}, `{"nationalities":["British","Betelgeusian"]}`, `{"nationalities":["British","Betelgeusian"]}`},
+		{"an index keeps its position", []string{`["nationalities",0]`}, `{"nationalities":["British","Betelgeusian"]}`, `{"nationalities":["British"]}`},
+		{"null keeps every position", []string{`["degrees",null,"type"]`}, `{"degrees":[{"university":"Betelgeuse"},{"type":"Master","university":"Betelgeuse"}]}`, `{"degrees":[{},{"type":"Master"}]}`},
+		{"an element nothing survives in ends the array", []string{`["degrees",null,"type"]`}, `{"degrees":[{"type":"Bachelor"},{"university":"Betelgeuse"}]}`, `{"degrees":[{"type":"Bachelor"}]}`},
+		{"an array nothing survives in is dropped", []string{`["degrees",null,"type"]`}, `{"degrees":[{"university":"Betelgeuse"}]}`, `{}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := mustTree(t, tt.pointers).Filter(mustObject(t, tt.doc))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if want := mustObject(t, tt.want); !reflect.DeepEqual(got, want) {
+				t.Errorf("Filter() = %v, want %v", got, want)
+			}
+		})
+	}
+
+	refusals := []struct {
+		name     string
+		pointers []string
+		doc      string
+		err      error
+	}{
+		{"an undeclared element before a declared one", []string{`["nationalities",1]`}, `{"nationalities":["British","Betelgeusian"]}`, ErrUndeclaredElement},
+		{"a string where keys are declared", []string{`["address","locality"]`}, `{"address":"42 Market Street"}`, ErrMismatch},
+	}
+	for _, tt := range refusals {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := mustTree(t, tt.pointers).Filter(mustObject(t, tt.doc))
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("Filter() error = %v, want %v", err, tt.err)
+			}
+		})
+	}
+}
+
+func mustTree(t *testing.T, pointers []string) *Tree {
+	t.Helper()
+	parsed := make([]Pointer, len(pointers))
+	for i, text := range pointers {
+		parsed[i] = mustPointer(t, text)
+	}
+	tree, err := NewTree(parsed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return tree
+}
+
+func mustObject(t *testing.T, text string) map[string]any {
+	t.Helper()
+	var object map[string]any
+	if err := json.Unmarshal([]byte(text), &object); err != nil {
+		t.Fatal(err)
+	}
+	return object
+}

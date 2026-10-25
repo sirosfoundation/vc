@@ -20,6 +20,19 @@ func (v *VCTM) Validate() error {
 	return validate.Struct(v)
 }
 
+// ClaimTree returns the tree of the claim paths. It refuses claims that
+// contradict each other as OpenID4VCI 1.0 Appendix B.3 defines it, since
+// they become the claims description of the issuer metadata (Appendix
+// B.2), and since two claims selecting one array element would disclose it
+// twice.
+func (v *VCTM) ClaimTree() (*claimpath.Tree, error) {
+	paths := make([]claimpath.Pointer, len(v.Claims))
+	for i, claim := range v.Claims {
+		paths[i] = claim.Path
+	}
+	return claimpath.NewTree(paths)
+}
+
 // SRIIntegrity computes the Subresource Integrity (SRI) hash of the VCTM document
 // as defined in W3C SRI spec and SD-JWT VC draft-14 Section 6.
 // The rawBytes parameter should be the original VCTM document bytes (not re-marshalled)
