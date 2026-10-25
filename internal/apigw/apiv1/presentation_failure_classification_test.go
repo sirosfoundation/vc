@@ -3,6 +3,7 @@ package apiv1
 import (
 	"testing"
 
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential/primitives"
 	"github.com/SUNET/vc/pkg/model"
 	"github.com/SUNET/vc/pkg/oauth2"
@@ -18,10 +19,10 @@ import (
 func ageDerivingScope() model.PresentationScope {
 	return model.PresentationScope{
 		FromScope:      "eduid",
-		RequiredClaims: map[string][]string{"birthdate": nil},
+		RequiredClaims: model.RequiredClaims{{Path: claimpath.Keys("birthdate")}},
 		Derivations: []primitives.Derivation{{
 			AgeOverThresholds: &primitives.AgeOverThresholdsArgs{
-				Input: "birthdate", Thresholds: []int{18},
+				Input: claimpath.Keys("birthdate"), Thresholds: []int{18},
 			},
 		}},
 	}
@@ -60,7 +61,7 @@ func TestFinalisePresentationVerification_AnUnusableBirthdateIsNotAServerFault(t
 			authCtx := seedAuthCtx(t, c, "sess-"+name)
 
 			err := c.finalisePresentationVerification(
-				t.Context(), authCtx, ageDerivingScope(), presentedWithBirthdate(birthdate))
+				t.Context(), authCtx, "eduid_age", ageDerivingScope(), presentedWithBirthdate(birthdate))
 			require.Error(t, err)
 			assert.NotErrorIs(t, err, ErrIssuanceAuthServerFault,
 				"the credential's own birthdate is not something the server got wrong")
@@ -84,10 +85,10 @@ func TestFinalisePresentationVerification_AMisconfiguredDerivationIsAServerFault
 	authCtx := seedAuthCtx(t, c, "sess-misconfigured")
 
 	pScope := ageDerivingScope()
-	pScope.Derivations[0].AgeOverThresholds.Input = "not_a_claim_this_scope_requires"
+	pScope.Derivations[0].AgeOverThresholds.Input = claimpath.Keys("not_a_claim_this_scope_requires")
 
 	err := c.finalisePresentationVerification(
-		t.Context(), authCtx, pScope, presentedWithBirthdate("1990-10-14"))
+		t.Context(), authCtx, "eduid_age", pScope, presentedWithBirthdate("1990-10-14"))
 	require.Error(t, err)
 	assert.ErrorIs(t, err, ErrIssuanceAuthServerFault,
 		"a derivation naming a claim nothing provides is a configuration fault - ABSENT is the "+
@@ -108,5 +109,5 @@ func TestFinalisePresentationVerification_AUsableBirthdateSucceeds(t *testing.T)
 	authCtx := seedAuthCtx(t, c, "sess-usable")
 
 	require.NoError(t, c.finalisePresentationVerification(
-		t.Context(), authCtx, ageDerivingScope(), presentedWithBirthdate("1990-10-14")))
+		t.Context(), authCtx, "eduid_age", ageDerivingScope(), presentedWithBirthdate("1990-10-14")))
 }

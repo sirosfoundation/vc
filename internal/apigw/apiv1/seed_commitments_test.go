@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential/seed"
 	"github.com/SUNET/vc/pkg/logger"
 	"github.com/SUNET/vc/pkg/mdoc"
@@ -443,7 +444,7 @@ func TestPathConflictRefusesRatherThanDeletingTheClaim(t *testing.T) {
 
 	_, err = c.injectCommitments(t.Context(), "nym_auth", scopeFormat(c, "nym_auth"), in)
 	require.Error(t, err, "a path conflict must refuse the issuance")
-	assert.Contains(t, err.Error(), "path conflict")
+	assert.ErrorIs(t, err, claimpath.ErrMismatch)
 }
 
 // An mdoc signer emits the elements its schema declares and silently

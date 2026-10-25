@@ -244,13 +244,9 @@ func (c *Client) OIDCRPCallback(ctx context.Context, req *OIDCRPCallbackRequest,
 	// IdP identity simply does not carry a source-only input (e.g. a
 	// birthdate that only the external API returns).
 	if credSourceForDerivs.DataSource == model.DataSourceAssertion {
-		if derivs := c.cfg.APIGW.DataSources.DerivationsForSource(session.CredentialType, credSourceForDerivs.DataSource); len(derivs) > 0 {
-			derived, derr := credential.ApplyDerivations(derivs, cc.identity, time.Now())
-			if derr != nil {
-				span.SetStatus(codes.Error, derr.Error())
-				return nil, fmt.Errorf("OIDC derivations failed: %w", derr)
-			}
-			credential.MergeNestedClaims(cc.identity, derived)
+		if derr := credential.ApplyScopeDerivations(c.cfg, credSourceForDerivs.DataSource, session.CredentialType, cc.identity, time.Now()); derr != nil {
+			span.SetStatus(codes.Error, derr.Error())
+			return nil, fmt.Errorf("OIDC derivations failed: %w", derr)
 		}
 	}
 
@@ -661,7 +657,7 @@ func (cc *callbackClaims) documentData() map[string]any {
 
 // cloneClaims copies the map and slice spine of a claim set, so that a caller
 // mutating the copy cannot reach the original. A shallow copy is not enough:
-// assertion defaults are dot-notation paths, and MergeDefaults walks into
+// an assertion default can name a nested claim, and MergeDefaults walks into
 // nested maps to set one, which would otherwise write straight into a nested
 // map the identity claims still share.
 //
@@ -704,11 +700,11 @@ func (c *Client) buildOIDCDocument(cc *callbackClaims, authenticSource string, m
 	documentData := cc.documentData()
 
 	if mergeAssertionDefaults {
-		defaults, err := c.cfg.APIGW.DataSources.Assertion.Scopes[cc.credentialType].ResolveDefaults(time.Now())
+		document, err := c.cfg.DocumentShape(cc.credentialType)
 		if err != nil {
-			return nil, fmt.Errorf("failed to resolve assertion defaults: %w", err)
+			return nil, fmt.Errorf("failed to merge assertion defaults: %w", err)
 		}
-		if err := credential.MergeDefaults(documentData, defaults); err != nil {
+		if err := c.cfg.APIGW.DataSources.Assertion.Scopes[cc.credentialType].MergeDefaults(documentData, time.Now(), document); err != nil {
 			return nil, fmt.Errorf("failed to merge assertion defaults: %w", err)
 		}
 	}

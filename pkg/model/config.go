@@ -522,8 +522,11 @@ type AttributeMapping map[string]AttributeConfig
 // a derivation on the target scope; see the Derivation Primitives catalog
 // (pkg/credential/primitives).
 type AttributeConfig struct {
-	// Claim is the target claim name (supports dot-notation for nesting)
-	Claim string `yaml:"claim" validate:"required" doc_example:"\"identity.given_name\""`
+	// Claim is the target claim. A dotted string is read as a claim of
+	// the document the mapping writes: split on dots for an auth
+	// provider, and as a claim of the scope's credential for an
+	// external_api scope.
+	Claim claimpath.Pointer `yaml:"claim" validate:"required" doc_example:"[identity, given_name]"`
 
 	// Required indicates if this attribute must be present in the assertion/response
 	Required bool `yaml:"required" default:"false"`
@@ -2556,7 +2559,7 @@ func (c *Cfg) LookupCredentialSources(scope string) ([]CredentialSource, error) 
 // For a datastore scope with auth_provider=openid4vp, returns its AuthScopes as-is.
 // For a presentation scope, synthesises a single-entry AuthScopes map from the
 // scope's from_scope + required_claims: the wallet must present a credential of
-// FromScope disclosing every key of RequiredClaims.
+// FromScope disclosing every claim of RequiredClaims.
 func (c *Cfg) GetOpenID4VPAuth(scope string) *OpenID4VPCredentialAuth {
 	if c.APIGW == nil {
 		return nil
@@ -2572,14 +2575,9 @@ func (c *Cfg) GetOpenID4VPAuth(scope string) *OpenID4VPCredentialAuth {
 		if cred.AuthProvider != AuthProviderOpenID4VP {
 			return nil
 		}
-		claims := make([]string, 0, len(cred.RequiredClaims))
-		for k := range cred.RequiredClaims {
-			claims = append(claims, k)
-		}
-		sort.Strings(claims)
 		return &OpenID4VPCredentialAuth{
 			AuthScopes: map[string]AuthScopeEntry{
-				cred.FromScope: {AuthClaims: claims},
+				cred.FromScope: {AuthClaims: cred.RequiredClaims.Paths()},
 			},
 		}
 	}

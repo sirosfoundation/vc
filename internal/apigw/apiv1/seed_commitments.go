@@ -11,7 +11,7 @@ import (
 	"io"
 	"strings"
 
-	"github.com/SUNET/vc/pkg/credential"
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential/seed"
 	"github.com/SUNET/vc/pkg/helpers"
 	"github.com/SUNET/vc/pkg/model"
@@ -473,15 +473,19 @@ func lookupPath(doc map[string]any, path string, flat bool) (any, bool) {
 // would nest every dotted mdoc element identifier into a tree the signer
 // then cannot find.
 //
-// The nested case delegates to credential.SetNestedValue, which refuses a
-// path whose intermediate segment is already a scalar. Creating the map
-// anyway - which is what a plain type assertion does - would DELETE that
-// claim from the document on the way to signing it, and the credential
-// would be issued missing an attribute nobody asked to remove.
+// The nested case writes through claimpath, which refuses a path whose
+// intermediate segment is already a scalar. Creating the map anyway -
+// which is what a plain type assertion does - would DELETE that claim from
+// the document on the way to signing it, and the credential would be
+// issued missing an attribute nobody asked to remove.
 func setPath(doc map[string]any, path string, value any, flat bool) error {
 	if flat {
 		doc[path] = value
 		return nil
 	}
-	return credential.SetNestedValue(doc, path, value)
+	pointer, err := claimpath.Nested().Dotted(path)
+	if err != nil {
+		return err
+	}
+	return claimpath.Nested().Set(doc, pointer, value)
 }

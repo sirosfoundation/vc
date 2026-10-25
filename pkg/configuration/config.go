@@ -12,6 +12,7 @@ import (
 
 	"github.com/SUNET/vc/pkg/issuance"
 
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/helpers"
 	"github.com/SUNET/vc/pkg/logger"
 	"github.com/SUNET/vc/pkg/model"
@@ -258,7 +259,7 @@ func New(ctx context.Context, serviceName string) (*model.Cfg, error) {
 		cfg.Issuer, cfg.Verifier, cfg.Registry = nil, nil, nil
 	}
 
-	if err := helpers.Check(ctx, cfg, cfg, log); err != nil {
+	if err := checkConfig(ctx, cfg, log); err != nil {
 		return nil, err
 	}
 
@@ -303,6 +304,20 @@ func New(ctx context.Context, serviceName string) (*model.Cfg, error) {
 	}
 
 	return cfg, nil
+}
+
+// checkConfig reads the dotted claims of the configuration as claims path
+// pointers, refuses a pointer still pending, naming where it is, and then
+// validates the configuration. It needs the schemas, and reads only the
+// sections this service keeps.
+func checkConfig(ctx context.Context, cfg *model.Cfg, log *logger.Log) error {
+	if err := cfg.ResolveClaimPaths(); err != nil {
+		return err
+	}
+	if err := claimpath.CheckResolved(cfg); err != nil {
+		return err
+	}
+	return helpers.Check(ctx, cfg, cfg, log)
 }
 
 // checkCredentialMetadataEntries refuses a common.credential_metadata key
