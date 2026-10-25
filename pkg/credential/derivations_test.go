@@ -2,6 +2,7 @@ package credential
 
 import (
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -409,3 +410,39 @@ func TestApplyDerivations_ContainerCreatedByReformatIsNotHolderFault(t *testing.
 
 // nestedShapes reads and writes JSON-based claims.
 var nestedShapes = primitives.Shapes{Source: claimpath.Nested(), Issued: claimpath.Nested()}
+
+// TestApplyDerivations_IndexedOutputIsolation writes into array elements
+// through indexed outputs, in a []any and in a []string. The derived claims
+// carry each write within its whole array, and the claims the derivations
+// read are left as they were.
+func TestApplyDerivations_IndexedOutputIsolation(t *testing.T) {
+	source := func() map[string]any {
+		return map[string]any{
+			"items":  []any{map[string]any{"name": " Ada "}, map[string]any{"name": " Grace "}},
+			"emails": []string{" ada@example.com "},
+		}
+	}
+	list := []primitives.Derivation{
+		{Trim: &primitives.TrimArgs{Input: claimpath.New(claimpath.Key("items"), claimpath.Index(1), claimpath.Key("name"))}},
+		{Trim: &primitives.TrimArgs{Input: claimpath.New(claimpath.Key("emails"), claimpath.Index(0))}},
+	}
+	if err := primitives.ResolveDerivations(list, nestedShapes); err != nil {
+		t.Fatal(err)
+	}
+
+	claims := source()
+	derived, err := ApplyDerivations(list, claims, time.Now(), nestedShapes)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]any{
+		"items":  []any{map[string]any{"name": " Ada "}, map[string]any{"name": "Grace"}},
+		"emails": []string{"ada@example.com"},
+	}
+	if !reflect.DeepEqual(derived, want) {
+		t.Errorf("derived = %v, want %v", derived, want)
+	}
+	if !reflect.DeepEqual(claims, source()) {
+		t.Errorf("the derivations changed the claims they read: %v", claims)
+	}
+}

@@ -3,6 +3,7 @@ package credential
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/SUNET/vc/pkg/claimpath"
@@ -27,7 +28,10 @@ import (
 //
 // A derivation writes each output claim at its path, so one that targets a
 // nested path (e.g. ["identity", "email"]) leaves a sibling nested claim
-// (identity.name) produced by an earlier step in place.
+// (identity.name) produced by an earlier step in place. An output with an
+// index writes into an element the claims hold, and the returned claims
+// carry the whole array it is in, since MergeNestedClaims replaces an array
+// whole. claims is left as it was.
 func ApplyDerivations(list []primitives.Derivation, claims map[string]any, now time.Time, shapes primitives.Shapes) (map[string]any, error) {
 	return ApplyDerivationsPinned(list, claims, now, nil, shapes)
 }
@@ -140,7 +144,25 @@ func writeOutput(working *primitives.Working, workingClaims, out map[string]any,
 	if err := working.Write(w.Path, cloneValue(w.Value)); err != nil {
 		return err
 	}
-	return issued.Set(out, w.Path, w.Value)
+	return recordOutput(out, workingClaims, location)
+}
+
+// recordOutput copies a claim a write at location changed from the working
+// claims into out: the claim at location, or, when location has null or an
+// index, the array its leading keys name.
+func recordOutput(out, workingClaims map[string]any, location claimpath.Pointer) error {
+	keys, ok := location.KeyPrefix()
+	if !ok {
+		return fmt.Errorf("output %s starts with no key", location)
+	}
+	value, present, err := claimpath.Nested().Get(workingClaims, keys)
+	if err != nil {
+		return err
+	}
+	if !present {
+		return fmt.Errorf("output %s: the claims hold nothing at %s after the write", location, keys)
+	}
+	return claimpath.Nested().Set(out, keys, cloneValue(value))
 }
 
 // inputProvenance returns the claim a derivation reads, and whether an
@@ -170,17 +192,22 @@ func recordProvenance(generated map[string]bool, existing map[string]any, locati
 	recordLeaves(generated, location, value, isGenerated)
 }
 
-// recordLeaves tags value at location: an object as generated, and each of
-// its leaves with isGenerated.
+// recordLeaves tags value at location: an object or an array as
+// generated, and each of its leaves with isGenerated.
 func recordLeaves(generated map[string]bool, location claimpath.Pointer, value any, isGenerated bool) {
-	object, isMap := value.(map[string]any)
-	if !isMap {
+	switch typed := value.(type) {
+	case map[string]any:
+		generated[location.String()] = true
+		for key, item := range typed {
+			recordLeaves(generated, location.Append(claimpath.Key(key)), item, isGenerated)
+		}
+	case []any:
+		generated[location.String()] = true
+		for i, item := range typed {
+			recordLeaves(generated, location.Append(claimpath.Index(uint(i))), item, isGenerated)
+		}
+	default:
 		generated[location.String()] = isGenerated
-		return
-	}
-	generated[location.String()] = true
-	for key, item := range object {
-		recordLeaves(generated, location.Append(claimpath.Key(key)), item, isGenerated)
 	}
 }
 
@@ -222,21 +249,33 @@ func cloneValue(v any) any {
 		}
 		return out
 	default:
-		return v
+		return cloneSlice(v)
 	}
 }
 
-// CloneNestedClaims returns a copy of src with nested map[string]any values
-// cloned recursively so later in-place merges on the working map do not
-// mutate the caller's original claims map.
+// cloneSlice deep-copies a slice of another element type, such as the
+// []string an attribute mapping writes. Any other value is returned as it
+// is.
+func cloneSlice(v any) any {
+	slice := reflect.ValueOf(v)
+	if slice.Kind() != reflect.Slice || slice.IsNil() {
+		return v
+	}
+	out := reflect.MakeSlice(slice.Type(), slice.Len(), slice.Len())
+	for i := range slice.Len() {
+		if item := cloneValue(slice.Index(i).Interface()); item != nil {
+			out.Index(i).Set(reflect.ValueOf(item))
+		}
+	}
+	return out.Interface()
+}
+
+// CloneNestedClaims returns a deep copy of src: a write into the copy,
+// through an object or into an array element, leaves src as it was.
 func CloneNestedClaims(src map[string]any) map[string]any {
 	out := make(map[string]any, len(src))
 	for k, v := range src {
-		if m, ok := v.(map[string]any); ok {
-			out[k] = CloneNestedClaims(m)
-			continue
-		}
-		out[k] = v
+		out[k] = cloneValue(v)
 	}
 	return out
 }

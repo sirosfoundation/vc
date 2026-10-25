@@ -73,16 +73,13 @@ func (c Component) String() string {
 }
 
 // asArray returns the elements of a JSON array, whichever slice type
-// holds it. A byte slice is a byte string.
+// holds it.
 func asArray(value any) ([]any, bool) {
-	switch v := value.(type) {
-	case []any:
+	if v, ok := value.([]any); ok {
 		return v, true
-	case []byte, nil:
-		return nil, false
 	}
-	rv := reflect.ValueOf(value)
-	if rv.Kind() != reflect.Slice {
+	rv, ok := arrayValue(value)
+	if !ok {
 		return nil, false
 	}
 	out := make([]any, rv.Len())
@@ -90,6 +87,16 @@ func asArray(value any) ([]any, bool) {
 		out[i] = rv.Index(i).Interface()
 	}
 	return out, true
+}
+
+// arrayValue returns the slice that holds a JSON array. A byte slice is a
+// byte string.
+func arrayValue(value any) (reflect.Value, bool) {
+	if _, bytes := value.([]byte); bytes || value == nil {
+		return reflect.Value{}, false
+	}
+	rv := reflect.ValueOf(value)
+	return rv, rv.Kind() == reflect.Slice
 }
 
 // get returns the one claim a pointer of keys and indices selects.
@@ -108,8 +115,9 @@ func (p Pointer) get(root map[string]any) (any, bool, error) {
 	return current, true, nil
 }
 
-// set writes value at a pointer of keys and indices, creating the objects
-// a key passes through.
+// set writes value at a pointer of keys and indices. It creates the
+// objects a missing key passes through, and never an array or an array
+// element: an index writes into an element that is there.
 func (p Pointer) set(root map[string]any, value any) error {
 	n := len(p.components) - 1
 	var container any = root
@@ -156,15 +164,38 @@ func (c Component) put(container any, value any) error {
 		object[c.key] = value
 		return nil
 	case indexKind:
-		array, ok := container.([]any)
-		if !ok {
-			return fmt.Errorf("%s on a %T", c, container)
-		}
-		if c.index >= uint(len(array)) {
-			return fmt.Errorf("%s on an array of %d elements", c, len(array))
-		}
-		array[c.index] = value
-		return nil
+		return c.putElement(container, value)
 	}
 	return fmt.Errorf("%s writes no single element", c)
+}
+
+// putElement writes value into the element an index selects, in an array
+// of any slice type.
+func (c Component) putElement(container any, value any) error {
+	array, ok := arrayValue(container)
+	if !ok {
+		return fmt.Errorf("%s on a %T", c, container)
+	}
+	if c.index >= uint(array.Len()) {
+		return fmt.Errorf("%s on an array of %d elements", c, array.Len())
+	}
+	element := array.Index(int(c.index))
+	written := reflect.ValueOf(value)
+	if !written.IsValid() {
+		written = reflect.Zero(element.Type())
+	}
+	if !written.Type().AssignableTo(element.Type()) || (value == nil && !nillable(element.Kind())) {
+		return fmt.Errorf("%s: a %T is no element of a %T", c, value, container)
+	}
+	element.Set(written)
+	return nil
+}
+
+// nillable reports whether a value of kind k can be nil.
+func nillable(k reflect.Kind) bool {
+	switch k {
+	case reflect.Interface, reflect.Pointer, reflect.Map, reflect.Slice:
+		return true
+	}
+	return false
 }
