@@ -2,6 +2,7 @@ package sdjwtvc
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -109,18 +110,25 @@ func validateClaims(claims map[string]any, vctm *VCTM, skipIssuerSupplied bool) 
 }
 
 // validateClaim checks that a mandatory claim is present and that every
-// value the claim's path selects has a JSON type.
-func validateClaim(errors *ValidationErrors, claims map[string]any, claim Claim, skipIssuerSupplied bool) {
+// value the claim's path selects has a JSON type. A path that selects no
+// claim is an absent claim. A path the claims contradict, such as a key on
+// a string, fails validation whether the claim is mandatory or not (SD-JWT
+// VC section 5.6).
+func validateClaim(report *ValidationErrors, claims map[string]any, claim Claim, skipIssuerSupplied bool) {
 	values, err := claim.Path.Select(claims)
-	if err != nil {
+	switch {
+	case errors.Is(err, claimpath.ErrNoClaim):
 		if claim.Mandatory && !(skipIssuerSupplied && isIssuerSuppliedClaim(claim.Path)) {
-			errors.AddError(claim.JSONPath(), "mandatory claim is missing")
+			report.AddError(claim.JSONPath(), "mandatory claim is missing")
 		}
+		return
+	case err != nil:
+		report.AddError(claim.JSONPath(), err.Error())
 		return
 	}
 	for _, value := range values {
 		if err := validateClaimValue(claim, value); err != nil {
-			errors.AddError(claim.JSONPath(), err.Error())
+			report.AddError(claim.JSONPath(), err.Error())
 		}
 	}
 }

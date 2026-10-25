@@ -243,6 +243,15 @@ func TestValidateDocument_OptionalClaimsMissing(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+// A path the document contradicts fails validation, optional or not: SD-JWT
+// VC section 5.6 fails claim metadata validation when processing a path is
+// an error, and a key on a string is one (section 5.6.1.2).
+func TestValidateDocument_OptionalClaimContradictedFails(t *testing.T) {
+	vctm := &VCTM{VCT: "test:credential:1", Claims: []Claim{{Path: claimpath.Keys("address", "locality")}}}
+	err := ValidateDocument([]byte(`{"address":"42 Market Street"}`), vctm)
+	assert.ErrorContains(t, err, claimpath.ErrMismatch.Error())
+}
+
 // VCTMs frequently mark JWT envelope claims (iss, exp, cnf) as mandatory for
 // verifier-side conformance, but those values are filled in by the issuer
 // pipeline at signing time rather than by the document data source. Document
