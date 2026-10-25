@@ -15,8 +15,9 @@ import { browserHandoffEnv, handOffToWallet } from "./wallet-handoff.js";
 // keys, array indices, and null for every element of an array.
 const arrayIndexSchema = v.pipe(v.number(), v.integer(), v.minValue(0));
 const claimPathSchema = v.array(v.union([v.string(), v.null(), arrayIndexSchema]));
-// A validation reads one claim, so its pointer has no null.
-const singleClaimPathSchema = v.array(v.union([v.string(), arrayIndexSchema]));
+// A validation reads one claim of the presented credential, which holds no
+// array positions, so its pointer is keys.
+const singleClaimPathSchema = v.array(v.string());
 
 /** @typedef {(string|number|null)[]} ClaimPath */
 
@@ -519,7 +520,7 @@ Alpine.data("app", () => ({
     /** @type {DCQLQuery | null} */
     dcqlQuery: null,
 
-    /** @type {Record<string, Array<{rule: string, path: (string|number)[], value: any}>> | null} */
+    /** @type {Record<string, Array<{rule: string, path: string[], value: any}>> | null} */
     validations: null,
 
     /** @type {PresentationDefinition | null} */

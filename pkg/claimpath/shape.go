@@ -13,6 +13,8 @@ import (
 //
 //   - Nested holds a JSON-based credential (SD-JWT VC, W3C) as its JSON
 //     object.
+//   - Presented holds the processed claims of a presented JSON-based
+//     credential.
 //   - MDocQualified holds a presented ISO mdoc: one flat key
 //     "<namespace>.<element>" per data element.
 //   - MDocElements holds the document data of an ISO mdoc: one key per
@@ -31,12 +33,26 @@ type shapeKind uint8
 
 const (
 	nestedShape shapeKind = iota + 1
+	presentedShape
 	mdocQualifiedShape
 	mdocElementsShape
 )
 
 // Nested returns the shape of a JSON-based credential.
 func Nested() Shape { return Shape{kind: nestedShape} }
+
+// ErrPresentedIndex is the error of a pointer with an index into the
+// claims of a presented credential. An index counts every element of the
+// array as issued, including the ones the holder did not disclose (SD-JWT
+// VC section 5.6). Processing a presentation removes those (RFC 9901
+// section 7.1, step 3.d), so the processed claims hold no element at a
+// known index.
+var ErrPresentedIndex = errors.New("claimpath: an index names no known element of a presented credential, whose processed claims drop the array elements the holder did not disclose")
+
+// Presented returns the shape of the processed claims of a presented
+// JSON-based credential (SD-JWT VC, W3C). It is Nested, and refuses a
+// pointer with an index (see ErrPresentedIndex).
+func Presented() Shape { return Shape{kind: presentedShape} }
 
 // MDocQualified returns the shape of a presented mdoc. A dotted name
 // without a dot is an element of defaultNamespace.
@@ -73,6 +89,11 @@ func (s Shape) Locate(p Pointer) (Pointer, error) {
 	}
 	switch s.kind {
 	case nestedShape:
+		return p, nil
+	case presentedShape:
+		if p.hasIndex() {
+			return Pointer{}, fmt.Errorf("%w: %s", ErrPresentedIndex, p)
+		}
 		return p, nil
 	case mdocQualifiedShape:
 		namespace, element, err := p.MDoc()
@@ -131,7 +152,7 @@ func (s Shape) ResolveOne(p *Pointer) error {
 
 // Dotted reads a dotted claim name as a pointer into the shape.
 //
-//   - Nested splits it on dots, one key per segment.
+//   - Nested and Presented split it on dots, one key per segment.
 //   - MDocQualified splits it at the last dot into [namespace, element],
 //     and reads a name without an inner dot as an element of the default
 //     namespace.
@@ -143,7 +164,7 @@ func (s Shape) Dotted(name string) (Pointer, error) {
 		return Pointer{}, errors.New("claimpath: a dotted claim name is non-empty")
 	}
 	switch s.kind {
-	case nestedShape:
+	case nestedShape, presentedShape:
 		keys := strings.Split(name, ".")
 		if slices.Contains(keys, "") {
 			return Pointer{}, fmt.Errorf("claimpath: %q has an empty segment", name)

@@ -96,6 +96,8 @@ func TestShapes(t *testing.T) {
 		{"mdoc document key the MDDL does not declare", elements, map[string]any{"raw": "1990"}, Keys("raw"), "1990", false},
 		{"mdoc document refuses three keys", elements, map[string]any{}, Keys("a", "b", "c"), nil, true},
 		{"one claim refuses null", Nested(), map[string]any{"a": []any{"x"}}, New(Key("a"), All()), nil, true},
+		{"a presented credential's claim", Presented(), map[string]any{"a": map[string]any{"b": "x"}}, Keys("a", "b"), "x", false},
+		{"a presented credential refuses an index", Presented(), map[string]any{"a": []any{"x"}}, New(Key("a"), Index(0)), nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

@@ -18,7 +18,8 @@ type ClaimValidation struct {
 	// Rule is the validation rule to apply, e.g., "age_over".
 	Rule string `json:"rule" yaml:"rule" validate:"required,oneof=age_over" doc_example:"\"age_over\""`
 
-	// Path is the claims path pointer of the claim to validate, e.g., ["birthdate"].
+	// Path is the claim of the presented credential to validate, named by
+	// keys, e.g., ["birthdate"].
 	Path claimpath.Pointer `json:"path" yaml:"path" validate:"required" doc_example:"[\"birthdate\"]"`
 
 	// Value is the threshold or expected value for the validation.
@@ -53,7 +54,7 @@ func validateAgeOver(claims map[string]any, path claimpath.Pointer, threshold an
 	}
 
 	// Resolve the claim value from the path
-	val, ok, err := claimpath.Nested().Get(claims, path)
+	val, ok, err := claimpath.Presented().Get(claims, path)
 	if err != nil {
 		return fmt.Errorf("age_over validation: %w", err)
 	}
