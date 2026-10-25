@@ -6,10 +6,8 @@ import (
 	"net/http"
 
 	"github.com/SUNET/vc/internal/apigw/apiv1"
-	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/httphelpers"
 	"github.com/SUNET/vc/pkg/model"
-	"github.com/SUNET/vc/pkg/sdjwtvc"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -219,7 +217,8 @@ func hasIdentityMappingScope(pairs []httphelpers.ResourcePair) bool {
 }
 
 // scopeClaimTemplates returns every credential scope, and the claim
-// template of each scope with a VCTM.
+// template of each scope with a VCTM: the document its claims declare
+// (claimpath.Tree.Template), with an empty string at each claim.
 func (s *Service) scopeClaimTemplates() ([]string, map[string]any, error) {
 	var scopes []string
 	templates := map[string]any{}
@@ -231,54 +230,13 @@ func (s *Service) scopeClaimTemplates() ([]string, map[string]any, error) {
 		if cm == nil || cm.VCTM == nil {
 			continue
 		}
-		template, err := buildClaimTemplate(cm.VCTM.Claims)
+		tree, err := cm.VCTM.ClaimTree()
 		if err != nil {
 			return nil, nil, fmt.Errorf("scope %s: %w", scope, err)
 		}
-		templates[scope] = template
+		templates[scope] = tree.Template("")
 	}
 	return scopes, templates, nil
-}
-
-// buildClaimTemplate creates a nested map from VCTM claims with empty string values
-func buildClaimTemplate(claims []sdjwtvc.Claim) (map[string]any, error) {
-	result := map[string]any{}
-	for _, claim := range claims {
-		components, err := claim.Path.Components()
-		if err != nil {
-			return nil, fmt.Errorf("VCTM claim %s: %w", claim.Path, err)
-		}
-		addTemplateClaim(result, components)
-	}
-	return result, nil
-}
-
-// addTemplateClaim adds the keys of one claim path to the template: an
-// empty string at the last component, an object at each key before it. A
-// null or an index adds no level.
-func addTemplateClaim(template map[string]any, components []claimpath.Component) {
-	current := template
-	last := len(components) - 1
-	for i, component := range components {
-		key, ok := component.KeyName()
-		if !ok {
-			continue
-		}
-		if i == last {
-			// Leaf — only set placeholder if not already a nested map
-			if _, ok := current[key].(map[string]any); !ok {
-				current[key] = ""
-			}
-			return
-		}
-		// Intermediate — ensure nested map exists, over a leaf placeholder
-		nested, ok := current[key].(map[string]any)
-		if !ok {
-			nested = map[string]any{}
-			current[key] = nested
-		}
-		current = nested
-	}
 }
 
 func (s *Service) endpointAdminLogout(ctx context.Context, c *gin.Context) (any, error) {

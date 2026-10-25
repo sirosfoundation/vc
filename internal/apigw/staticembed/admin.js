@@ -1,56 +1,8 @@
 // @ts-nocheck
 import Alpine from '/static/alpinejs.esm.min.js';
+import { buildTreeView, flattenDocument, unflattenEntries } from './admin-helpers.js';
 
 window.adminApp = function () {
-    /** Flatten a nested object into dot-notation key-value pairs */
-    function flattenObject(obj, prefix) {
-        const entries = [];
-        for (const [k, v] of Object.entries(obj)) {
-            const key = prefix ? prefix + '.' + k : k;
-            if (v && typeof v === 'object' && !Array.isArray(v)) {
-                entries.push(...flattenObject(v, key));
-            } else {
-                entries.push({ key, value: v == null ? '' : String(v) });
-            }
-        }
-        return entries;
-    }
-
-    /** Rebuild a nested object from dot-notation key-value pairs */
-    function unflattenEntries(entries) {
-        const result = {};
-        for (const { key, value } of entries) {
-            const parts = key.split('.');
-            let cur = result;
-            for (let i = 0; i < parts.length - 1; i++) {
-                if (!(parts[i] in cur) || typeof cur[parts[i]] !== 'object') {
-                    cur[parts[i]] = {};
-                }
-                cur = cur[parts[i]];
-            }
-            cur[parts[parts.length - 1]] = value;
-        }
-        return result;
-    }
-
-    /** Build a tree-view display list from flat dot-notation entries */
-    function buildTreeView(entries) {
-        const rows = [];
-        const seenGroups = new Set();
-        for (let idx = 0; idx < entries.length; idx++) {
-            const parts = entries[idx].key.split('.');
-            for (let d = 0; d < parts.length - 1; d++) {
-                const groupKey = parts.slice(0, d + 1).join('.');
-                if (!seenGroups.has(groupKey)) {
-                    seenGroups.add(groupKey);
-                    rows.push({ type: 'group', label: parts[d], depth: d, idx: -1, path: groupKey });
-                }
-            }
-            rows.push({ type: 'field', label: parts[parts.length - 1], depth: parts.length - 1, idx, path: entries[idx].key });
-        }
-        return rows;
-    }
-
     return {
         authenticated: false,
         unrestricted: false,
@@ -213,42 +165,6 @@ window.adminApp = function () {
 
         treeView(entries) { return buildTreeView(entries); },
 
-        /** Remove all entries under a group prefix */
-        removeGroup(entries, groupPath) {
-            const prefix = groupPath + '.';
-            for (let i = entries.length - 1; i >= 0; i--) {
-                if (entries[i].key === groupPath || entries[i].key.startsWith(prefix)) {
-                    entries.splice(i, 1);
-                }
-            }
-        },
-
-        /** Add a new empty field inside a group, inserted after the last child */
-        addChildField(entries, groupPath) {
-            const prefix = groupPath + '.';
-            let lastIdx = -1;
-            for (let i = 0; i < entries.length; i++) {
-                if (entries[i].key.startsWith(prefix)) {
-                    lastIdx = i;
-                }
-            }
-            entries.splice(lastIdx + 1, 0, { key: prefix, value: '' });
-        },
-
-        /** Rename a field's leaf segment (used for newly added child fields) */
-        renameField(entries, idx, name) {
-            const entry = entries[idx];
-            const parts = entry.key.split('.');
-            parts[parts.length - 1] = name.trim();
-            entry.key = parts.join('.');
-        },
-
-        /** Convert a flat field into a group with an empty child */
-        promoteToGroup(entries, idx) {
-            const key = entries[idx].key;
-            entries[idx].key = key + '.';
-        },
-
         formatDate(d) {
             if (!d) return '-';
             try {
@@ -306,7 +222,7 @@ window.adminApp = function () {
             const scope = this.ds.create.scope;
             const template = this.scopeTemplates[scope];
             if (template && Object.keys(template).length > 0) {
-                this.ds.create.document_data = flattenObject(template, '');
+                this.ds.create.document_data = flattenDocument(template);
                 this.ds.create.document_data_json = JSON.stringify(template, null, 2);
             }
         },
@@ -503,7 +419,7 @@ window.adminApp = function () {
             const dd = doc.document_data || {};
             this.ds.edit = {
                 identity_mapping_ids_str: (doc.identity_mapping_ids || []).join(', '),
-                document_data: flattenObject(dd, '')
+                document_data: flattenDocument(dd)
             };
             this.ds.editError = '';
             this.ds.editIdx = idx;
