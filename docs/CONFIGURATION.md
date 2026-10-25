@@ -798,10 +798,10 @@ The data comes directly from the SAML attributes or OIDC claims.
 
 > **Path:** `.apigw.data_sources.assertion.scopes.<credential scope>.defaults[]`, `.apigw.data_sources.presentation.scopes.<credential scope>.defaults[]`
 
-| Field   | Type                  | Description                     | Example             | Default | Required |
-| ------- | --------------------- | ------------------------------- | ------------------- | ------- | -------- |
-| `path`  | `claims path pointer` | Claim of the issued credential. | `[issuing_country]` | -       | Yes      |
-| `value` | `object`              | Claim's value.                  | `SE`                | -       | No       |
+| Field   | Type                  | Description                                                                                                           | Example             | Default | Required |
+| ------- | --------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------- | ------- | -------- |
+| `path`  | `claims path pointer` | Claim of the issued credential, named by keys: a default fills an absent claim, and a write creates no array element. | `[issuing_country]` | -       | Yes      |
+| `value` | `object`              | Claim's value.                                                                                                        | `SE`                | -       | No       |
 
 ### `external_api`
 
@@ -834,12 +834,12 @@ AttributeConfig is a pure rename + presence step. Any value transformation
 a derivation on the target scope; see the Derivation Primitives catalog
 (pkg/credential/primitives).
 
-| Field      | Type                  | Description                                                                                                                                                                                  | Example                  | Default | Required |
-| ---------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------- | -------- |
-| `claim`    | `claims path pointer` | Target claim. A dotted string is read as a claim of the document the mapping writes: split on dots for an auth provider, and as a claim of the scope's credential for an external_api scope. | `[identity, given_name]` | -       | Yes      |
-| `required` | `bool`                | Required indicates if this attribute must be present in the assertion/response                                                                                                               | -                        | `false` | No       |
-| `default`  | `string`              | Optional default value if attribute is missing                                                                                                                                               | -                        | -       | No       |
-| `as_array` | `bool`                | AsArray wraps a scalar value in a single-element array before setting the claim. No-op when the value is already a slice (e.g. multi-valued OIDC claim).                                     | -                        | -       | No       |
+| Field      | Type                  | Description                                                                                                                                                                                                                                                                        | Example                  | Default | Required |
+| ---------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ | ------- | -------- |
+| `claim`    | `claims path pointer` | Target claim, named by keys: the mapping builds its document, and a write creates no array element. A dotted string is read as a claim of the document the mapping writes: split on dots for an auth provider, and as a claim of the scope's credential for an external_api scope. | `[identity, given_name]` | -       | Yes      |
+| `required` | `bool`                | Required indicates if this attribute must be present in the assertion/response                                                                                                                                                                                                     | -                        | `false` | No       |
+| `default`  | `string`              | Optional default value if attribute is missing                                                                                                                                                                                                                                     | -                        | -       | No       |
+| `as_array` | `bool`                | AsArray wraps a scalar value in a single-element array before setting the claim. No-op when the value is already a slice (e.g. multi-valued OIDC claim).                                                                                                                           | -                        | -       | No       |
 
 ### `presentation`
 

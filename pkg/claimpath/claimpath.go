@@ -271,6 +271,22 @@ func (p Pointer) hasIndex() bool {
 	return slices.ContainsFunc(p.components, func(c Component) bool { return c.kind == indexKind })
 }
 
+// ErrFillsElement is the error of a pointer with null or an index where a
+// write fills an absent claim. A write creates the objects a missing key
+// passes through, and never an array or an array element.
+var ErrFillsElement = errors.New("claimpath: a write that fills an absent claim names it by keys, since a write never creates an array element")
+
+// CheckFill returns ErrFillsElement for a pointer with null or an index.
+func (p Pointer) CheckFill() error {
+	if _, err := p.Components(); err != nil {
+		return err
+	}
+	if _, keys := p.KeyNames(); !keys {
+		return fmt.Errorf("%w: %s", ErrFillsElement, p)
+	}
+	return nil
+}
+
 // Append returns p extended with components.
 func (p Pointer) Append(components ...Component) Pointer {
 	return Pointer{components: append(slices.Clone(p.components), components...), dotted: p.dotted}

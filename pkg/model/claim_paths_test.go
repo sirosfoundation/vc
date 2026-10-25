@@ -125,6 +125,11 @@ func TestResolveClaimPathsRefusals(t *testing.T) {
 			refused:  datastore("          auth_claims: [[nationalities, 0]]\n          identity_attributes: [{path: [nationalities, 0], attribute: given_name}]\n"),
 			accepted: datastore("          auth_claims: [[nationalities]]\n          identity_attributes: [{path: [nationalities], attribute: given_name}]\n"),
 		},
+		{
+			name:     "a default names its claim by keys",
+			refused:  "assertion:\n  scopes:\n    ehic:\n      auth_provider: oidc\n      defaults:\n        - {path: [nationalities, 0], value: SE}\n",
+			accepted: "assertion:\n  scopes:\n    ehic:\n      auth_provider: oidc\n      defaults:\n        - {path: [nationality], value: SE}\n",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
