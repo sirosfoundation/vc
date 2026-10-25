@@ -23,6 +23,8 @@ import (
 //     namespace, or a document key the MDDL does not declare.
 //   - An auth provider's attribute mapping writes a JSON object, so its
 //     claims split on dots.
+//   - A claim a write fills when it is absent, a default or an attribute
+//     mapping's, is named by keys (claimpath.Pointer.CheckFill).
 //
 // A derivation reads its source data and writes the issued document; see
 // primitives.ResolveDerivations. A verifier preset's validation reads one
@@ -258,7 +260,7 @@ func (c *Cfg) resolveDefaults(defaults ClaimDefaults, scope, expiryDuration stri
 		return err
 	}
 	for i := range defaults {
-		if err := document.ResolveOne(&defaults[i].Path); err != nil {
+		if err := resolveFill(document, &defaults[i].Path); err != nil {
 			return fmt.Errorf("defaults[%d].path: %w", i, err)
 		}
 	}
@@ -296,16 +298,25 @@ func (c *Cfg) resolveScopeAttributeMapping(mapping AttributeMapping, scope strin
 	return resolveAttributeMapping(mapping, document)
 }
 
-// resolveAttributeMapping reads the claim of each attribute in shape.
+// resolveAttributeMapping reads the claim of each attribute in shape. A
+// mapping builds its document, so each claim is one it fills.
 func resolveAttributeMapping(mapping AttributeMapping, shape claimpath.Shape) error {
 	for _, attribute := range slices.Sorted(maps.Keys(mapping)) {
 		config := mapping[attribute]
-		if err := shape.ResolveOne(&config.Claim); err != nil {
+		if err := resolveFill(shape, &config.Claim); err != nil {
 			return fmt.Errorf("%s.claim: %w", attribute, err)
 		}
 		mapping[attribute] = config
 	}
 	return nil
+}
+
+// resolveFill reads a claim a write fills when it is absent, in shape.
+func resolveFill(shape claimpath.Shape, claim *claimpath.Pointer) error {
+	if err := shape.ResolveOne(claim); err != nil {
+		return err
+	}
+	return claim.CheckFill()
 }
 
 // checkPresetValidations checks that each validation of a verifier preset

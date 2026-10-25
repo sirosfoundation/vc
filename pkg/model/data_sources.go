@@ -456,7 +456,8 @@ func (p PresentationScope) MergeDefaults(doc map[string]any, now time.Time, docu
 
 // ClaimDefault is the value of a claim the source data does not carry.
 type ClaimDefault struct {
-	// Path is the claim of the issued credential.
+	// Path is the claim of the issued credential, named by keys: a
+	// default fills an absent claim, and a write creates no array element.
 	Path claimpath.Pointer `yaml:"path" validate:"required" doc_example:"[issuing_country]"`
 	// Value is the claim's value.
 	Value any `yaml:"value" doc_example:"SE"`
