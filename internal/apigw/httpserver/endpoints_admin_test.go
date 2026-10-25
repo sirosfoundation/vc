@@ -439,27 +439,27 @@ func TestAdminStatus_UserNotInRules(t *testing.T) {
 		"user with no rules should get all scopes (no resource constraints)")
 }
 
-// TestAdminStatus_ScopeTemplates_NestedPaths verifies that VCTM claims with
-// nested paths (e.g., address.street) produce nested template objects.
-func TestAdminStatus_ScopeTemplates_NestedPaths(t *testing.T) {
+// TestAdminStatus_ScopeTemplates_Structure checks the template of VCTM
+// claims against the document they declare, written down by hand: an
+// object at each key, an array at null and at an index, and a placeholder
+// at each declared claim and at each array position below a declared
+// index.
+func TestAdminStatus_ScopeTemplates_Structure(t *testing.T) {
 	mock := &adminStatusMock{
 		authenticSources: []string{"SUNET"},
 	}
-
-	firstName := "first_name"
-	address := "address"
-	street := "street"
-	city := "city"
 	cfg := &model.Cfg{
 		Common: &model.Common{
 			CredentialMetadata: map[string]*model.CredentialMetadata{
-				"pid": {
+				"elm": {
 					VCTM: &sdjwtvc.VCTM{
 						Claims: []sdjwtvc.Claim{
-							{Path: claimpath.Keys(firstName)},
-							{Path: claimpath.Keys(address, street)},
-							{Path: claimpath.Keys(address, city)},
-							{Path: claimpath.New(claimpath.All())}, // nil element — should be skipped
+							{Path: claimpath.Keys("first_name")},
+							{Path: claimpath.Keys("address")},
+							{Path: claimpath.Keys("address", "street")},
+							{Path: claimpath.Keys("address", "city")},
+							{Path: claimpath.New(claimpath.Key("hasClaim"), claimpath.Index(1), claimpath.Key("title"))},
+							{Path: claimpath.New(claimpath.Key("nationalities"), claimpath.All())},
 						},
 					},
 				},
@@ -476,63 +476,13 @@ func TestAdminStatus_ScopeTemplates_NestedPaths(t *testing.T) {
 
 	templates, ok := result["scope_templates"].(map[string]any)
 	require.True(t, ok)
-
-	pidTpl, ok := templates["pid"].(map[string]any)
-	require.True(t, ok, "pid scope should have a template")
-
-	// first_name should be a leaf
-	assert.Equal(t, "", pidTpl["first_name"])
-
-	// address should be nested
-	addrMap, ok := pidTpl["address"].(map[string]any)
-	require.True(t, ok, "address should be a nested map")
-	assert.Equal(t, "", addrMap["street"])
-	assert.Equal(t, "", addrMap["city"])
-}
-
-// TestAdminStatus_ScopeTemplates_LeafOverwrittenByNested verifies that if a
-// leaf claim is later extended by a nested path, the nested map wins.
-func TestAdminStatus_ScopeTemplates_LeafOverwrittenByNested(t *testing.T) {
-	mock := &adminStatusMock{
-		authenticSources: []string{"SUNET"},
+	want := map[string]any{
+		"first_name":    "",
+		"address":       map[string]any{"street": "", "city": ""},
+		"hasClaim":      []any{"", map[string]any{"title": ""}},
+		"nationalities": []any{""},
 	}
-
-	address := "address"
-	street := "street"
-	cfg := &model.Cfg{
-		Common: &model.Common{
-			CredentialMetadata: map[string]*model.CredentialMetadata{
-				"pid": {
-					VCTM: &sdjwtvc.VCTM{
-						Claims: []sdjwtvc.Claim{
-							// First claim: "address" as a leaf
-							{Path: claimpath.Keys(address)},
-							// Second claim: "address.street" as nested — should overwrite
-							{Path: claimpath.Keys(address, street)},
-						},
-					},
-				},
-			},
-		},
-	}
-	rules := []string{
-		`(vc (service apigw)(method *)(path /api/v1/*)(subject alice@sunet.se)(authentic_source *)(scope *))`,
-	}
-
-	engine := testSetupAdminStatus(t, "alice@sunet.se", rules, cfg, mock)
-	cookies := loginAndGetCookies(t, engine)
-	result := getStatus(t, engine, cookies)
-
-	templates, ok := result["scope_templates"].(map[string]any)
-	require.True(t, ok)
-
-	pidTpl, ok := templates["pid"].(map[string]any)
-	require.True(t, ok)
-
-	// address should be a nested map (overwriting the leaf placeholder)
-	addrMap, ok := pidTpl["address"].(map[string]any)
-	require.True(t, ok, "address should be a nested map after overwrite")
-	assert.Equal(t, "", addrMap["street"])
+	assert.Equal(t, want, templates["elm"])
 }
 
 // ==================== End-to-end: login → status → search documents ====================
