@@ -54,9 +54,10 @@ func TestInteractionTypeFollowsTheSameSelectorAsAuthorize(t *testing.T) {
 			}
 			client.cfg.APIGW.DataSources.Presentation.Scopes = map[string]model.PresentationScope{
 				challengeScope: {
-					AuthProvider:   model.AuthProviderOpenID4VP,
-					FromScope:      challengeAuthScope,
-					RequiredClaims: model.RequiredClaims{{Path: claimpath.Keys("given_name")}, {Path: claimpath.Keys("family_name")}},
+					AuthProvider: model.AuthProviderOpenID4VP,
+					From: map[string]model.PresentedCredential{
+						challengeAuthScope: {RequiredClaims: map[string][]string{"given_name": nil, "family_name": nil}},
+					},
 				},
 			}
 

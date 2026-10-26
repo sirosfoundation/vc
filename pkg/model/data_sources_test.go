@@ -99,9 +99,10 @@ func TestLookupCredentialSources_Presentation(t *testing.T) {
 		Presentation: PresentationConfig{
 			Scopes: map[string]PresentationScope{
 				"eduid_age_verification": {
-					FromScope:      "eduid",
-					AuthProvider:   "openid4vp",
-					RequiredClaims: RequiredClaims{{Path: claimpath.Keys("birthdate")}},
+					AuthProvider: "openid4vp",
+					From: map[string]PresentedCredential{
+						"eduid": {RequiredClaims: map[string][]string{"birthdate": nil}},
+					},
 				},
 			},
 		},

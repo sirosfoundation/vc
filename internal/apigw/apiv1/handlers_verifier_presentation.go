@@ -18,8 +18,9 @@ import (
 )
 
 // finalisePresentationVerification stores the required claims from a
-// presented credential onto authCtx.VerifiedClaims and validates the
-// scope's per-claim allow-lists. The datastore lookup step is intentionally
+// presented credential onto authCtx.VerifiedClaims, records which accepted
+// credential it is in authCtx.PresentedScope, and validates its per-claim
+// allow-lists. The datastore lookup step is intentionally
 // skipped: presentation-source credentials derive their whole document from
 // the presented credential's own claims (see handlers_issuer.go's
 // VCICredential presentation branch). A preview document is cached so the
@@ -33,31 +34,35 @@ import (
 // the two into different HTTP answers, and telling a wallet its
 // presentation was rejected when the datastore was down invites a retry
 // that cannot succeed.
-func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *cache.AuthorizationContext, scope string, pScope model.PresentationScope, presented map[string]any) error {
+func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *cache.AuthorizationContext, pScope model.PresentationScope, presentedScope string, presented map[string]any) error {
+	accepted, ok := pScope.From[presentedScope]
+	if !ok {
+		return helpers.NewErrorDetailsWithStatus("presentation_scope_mismatch",
+			fmt.Sprintf("a %q credential is not one this scope accepts", presentedScope),
+			400)
+	}
 	// VPTokenValidator.validateAgainstDCQL is currently a no-op, so a
 	// wallet could return a credential of the wrong type that happens to
 	// carry the required claim keys. Enforce the presented type against
-	// pScope.FromScope before minting anything from it.
-	if err := c.enforceFromScopeType(pScope, presented); err != nil {
+	// presentedScope before minting anything from it.
+	if err := c.enforceScopeCredentialType(presentedScope, presented); err != nil {
 		return err
 	}
 
-	// The format of pScope.FromScope decides the shape the claims are read
-	// in. SD-JWT VC nests a path under real objects, so a literal
-	// top-level "identity.birthdate" key does NOT satisfy the required
-	// path ["identity", "birthdate"] — otherwise a wallet could smuggle a
-	// flat key in and have it accepted. mdoc keeps the opposite
-	// convention: namespace-qualified claims live as one literal key
-	// (e.g. "org.iso.18013.5.1.birth_date").
-	shapes, err := c.cfg.DerivationShapes(scope, pScope.FromScope)
-	if err != nil {
-		return serverFault(err)
-	}
-	verified, err := verifiedClaims(shapes.Source, presented, pScope.RequiredClaims)
+	// Format of presentedScope decides what counts as a valid claim
+	// shape. SD-JWT VC nests dotted paths under real objects, so a literal
+	// top-level "identity.birthdate" key must NOT satisfy the required
+	// nested path "identity.birthdate" — otherwise a wallet could smuggle
+	// a flat key in and have it accepted. mdoc keeps the opposite
+	// convention: namespace-qualified claims live as one literal dotted
+	// key (e.g. "org.iso.18013.5.1.birth_date"), so literal lookup is the
+	// only one that works.
+	verified, err := verifiedClaims(c.cfg.GetFormatForScope(presentedScope), presented, accepted.RequiredClaims)
 	if err != nil {
 		return err
 	}
 	authCtx.VerifiedClaims = verified
+	authCtx.PresentedScope = presentedScope
 	if err := c.cacheService.AuthContext.Update(ctx, authCtx); err != nil {
 		return serverFault(fmt.Errorf("failed to persist verified claims: %w", err))
 	}
@@ -78,7 +83,7 @@ func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *
 	// its document the same way.
 	previewData := shapes.Source.Processed(verified)
 	now := time.Now()
-	derived, err := credential.ApplyDerivations(pScope.Derivations, verified, now, shapes)
+	derived, err := credential.ApplyDerivations(accepted.Derivations, verified, now)
 	if err != nil {
 		// Not every derivation failure is ours. A scope deriving age from
 		// a required birthdate gets whatever the credential carried, and a
@@ -101,27 +106,65 @@ func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *
 
 	previewDoc := &model.CompleteDocument{
 		Meta: &model.MetaData{
-			AuthenticSource: pScope.FromScope,
+			AuthenticSource: presentedScope,
 		},
 		DocumentData: previewData,
 	}
 	c.cacheService.Document.Set(ctx, authCtx.SessionID, map[string]*model.CompleteDocument{
-		pScope.FromScope: previewDoc,
+		presentedScope: previewDoc,
 	})
 	return nil
 }
 
 // verifiedClaims returns the required claims of a presented credential,
 // each checked against its allow-list, in the shape the presented
-// credential used.
-func verifiedClaims(shape claimpath.Shape, presented map[string]any, required model.RequiredClaims) (map[string]any, error) {
+// credential used. Each value is in the form the issued document carries
+// (documentValue): a CBOR-decoded value, such as an mdoc full-date's tag
+// 1004, would come back from the Mongo-backed auth context store as a
+// BSON document.
+func verifiedClaims(sourceFormat string, presented map[string]any, required map[string][]string) (map[string]any, error) {
 	verified := make(map[string]any, len(required))
-	for _, claim := range required {
-		if err := verifyRequiredClaim(shape, presented, claim); err != nil {
-			return nil, err
+	for claim, allowed := range required {
+		val, present := lookupClaimPath(sourceFormat, presented, claim)
+		if !present {
+			return nil, helpers.NewErrorDetailsWithStatus("missing_required_claim",
+				fmt.Sprintf("claim %q not present on presented credential", claim),
+				400)
 		}
-		if err := copyPresentedClaim(shape, verified, presented, claim.Path); err != nil {
-			return nil, serverFault(err)
+		if len(allowed) > 0 && !claimValueMatches(val, allowed) {
+			return nil, helpers.NewErrorDetailsWithStatus("claim_value_not_allowed",
+				fmt.Sprintf("claim %q value not in allow-list", claim),
+				403)
+		}
+		stored, err := documentValue(val)
+		if err != nil {
+			return nil, helpers.NewErrorDetailsWithStatus("claim_value_not_representable",
+				fmt.Sprintf("claim %q: %v", claim, err),
+				400)
+		}
+		// Materialise dotted claim paths as nested map structures so the
+		// downstream VCTM filter (which walks nested maps) can see them
+		// under the same shape the presented credential used. mdoc keeps
+		// its namespace-qualified literal key; SD-JWT always nests.
+		setClaimPath(sourceFormat, verified, presented, claim, stored)
+	}
+	return verified, nil
+}
+
+// lookupClaimPath resolves a claim path against a nested claims map in a
+// format-aware way. For mdoc formats (plain or ZK) a literal-key match is
+// tried first so namespace-qualified keys stored as one flat
+// "org.iso.18013.5.1.birth_date" entry resolve to their value, then the
+// path falls back to splitting on "." and walking nested maps. For
+// SD-JWT VC the literal fallback is intentionally skipped so a flat
+// "identity.birthdate" key on the presented credential cannot satisfy a
+// nested path "identity.birthdate" the scope required. Returns the value
+// and true when the path resolves; false when any intermediate segment is
+// missing or is not a map.
+func lookupClaimPath(sourceFormat string, claims map[string]any, path string) (any, bool) {
+	if isMDocLikeFormat(sourceFormat) {
+		if v, ok := claims[path]; ok {
+			return v, true
 		}
 	}
 	return verified, nil
@@ -176,13 +219,6 @@ func isMDocLikeFormat(format string) bool {
 	return format == openid4vp.FormatMsoMdoc || format == openid4vp.FormatMsoMdocZk
 }
 
-// enforceFromScopeType refuses a presented credential whose type does not
-// match pScope.FromScope. Delegates to enforceScopeCredentialType keyed by
-// FromScope.
-func (c *Client) enforceFromScopeType(pScope model.PresentationScope, presented map[string]any) error {
-	return c.enforceScopeCredentialType(pScope.FromScope, presented)
-}
-
 // enforceScopeCredentialType refuses a presented credential whose type does
 // not match the credential_metadata for the given scope. For SD-JWT VC the
 // top-level `vct` claim carries the canonical type identifier and is
@@ -209,7 +245,7 @@ func (c *Client) enforceScopeCredentialType(scope string, presented map[string]a
 		// than advertise partial support that fails later with a
 		// confusing error, refuse the configuration here.
 		return helpers.NewErrorDetailsWithStatus("presentation_scope_unsupported_format",
-			fmt.Sprintf("scope %q uses mso_mdoc_zk, which is not supported as a presentation from_scope; use the ZK verifier directly", scope),
+			fmt.Sprintf("scope %q uses mso_mdoc_zk, which a presentation scope cannot accept; use the ZK verifier directly", scope),
 			500)
 	default:
 		return helpers.NewErrorDetailsWithStatus("presentation_scope_misconfigured",
