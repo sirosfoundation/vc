@@ -28,7 +28,8 @@ import (
 // A derivation writes each output claim at its path, so one that targets a
 // nested path (e.g. ["identity", "email"]) leaves a sibling nested claim
 // (identity.name) produced by an earlier step in place. An output with an
-// index writes into an element the claims hold, and the returned claims
+// index writes into an element of the issued document, which holds the
+// processed claims (claimpath.Shape.Processed), and the returned claims
 // carry the whole array it is in, since MergeNestedClaims replaces an array
 // whole. claims is left as it was.
 func ApplyDerivations(list []primitives.Derivation, claims map[string]any, now time.Time, shapes primitives.Shapes) (map[string]any, error) {
@@ -72,37 +73,30 @@ func ApplyScopeDerivations(cfg *model.Cfg, source model.DataSourceType, scope st
 // derivations tried to write them.
 func ApplyDerivationsPinned(list []primitives.Derivation, claims map[string]any, now time.Time, pinned map[string]any, shapes primitives.Shapes) (map[string]any, error) {
 	out := make(map[string]any)
-	workingClaims := claimpath.Clone(claims)
-	// CLONED on every restoration, not assigned. A write lands INTO
-	// existing nested maps, so handing the pin itself to working lets the
-	// next step mutate it: a derivation changing a presented
-	// address.country from DK to SE changes the pin too, and every later
-	// step - and the caller's final restoration - then uses the derived
-	// value while believing it is the proved one. Cloning the SNAPSHOT
-	// once is not enough; it has to be cloned each time it goes back in.
-	restore := func() {
-		for name, value := range pinned {
-			workingClaims[name] = claimpath.Clone(value)
-		}
-	}
-	restore()
-	working := primitives.NewWorking(workingClaims, shapes)
+	working := primitives.NewWorking(claimpath.Clone(claims), shapes)
+	// Pinned on every restoration with a fresh copy (see Working.Pin). A
+	// write lands INTO existing nested maps, so handing the pin itself to
+	// working lets the next step mutate it: a derivation changing a
+	// presented address.country from DK to SE changes the pin too, and
+	// every later step - and the caller's final restoration - then uses
+	// the derived value while believing it is the proved one.
+	working.Pin(pinned)
 	// generated holds the locations of claims whose value is not holder
 	// data: output of a computing primitive, or a reformatting of such
 	// output.
 	generated := map[string]bool{}
 	for i, d := range list {
-		if err := applyDerivation(working, workingClaims, out, d, now, generated, shapes); err != nil {
+		if err := applyDerivation(working, out, d, now, generated, shapes); err != nil {
 			return nil, fmt.Errorf("derivations[%d]: %w", i, err)
 		}
-		restore()
+		working.Pin(pinned)
 	}
 	return out, nil
 }
 
 // applyDerivation runs one derivation, writes its outputs into the working
 // claims and into out, and records their provenance.
-func applyDerivation(working *primitives.Working, workingClaims, out map[string]any, d primitives.Derivation, now time.Time, generated map[string]bool, shapes primitives.Shapes) error {
+func applyDerivation(working *primitives.Working, out map[string]any, d primitives.Derivation, now time.Time, generated map[string]bool, shapes primitives.Shapes) error {
 	input, inputGenerated, err := inputProvenance(working, d, generated)
 	if err != nil {
 		return err
@@ -117,7 +111,7 @@ func applyDerivation(working *primitives.Working, workingClaims, out map[string]
 	}
 	isGenerated := !d.ReformatsInput() || inputGenerated
 	for _, w := range writes {
-		if err := writeOutput(working, workingClaims, out, w, isGenerated, generated, shapes.Issued); err != nil {
+		if err := writeOutput(working, out, w, isGenerated, generated, shapes.Issued); err != nil {
 			return err
 		}
 	}
@@ -129,34 +123,34 @@ func applyDerivation(working *primitives.Working, workingClaims, out map[string]
 	return nil
 }
 
-// writeOutput writes one output of a derivation into the working claims
+// writeOutput writes one output of a derivation into the issued document
 // and into out, and records its provenance.
-func writeOutput(working *primitives.Working, workingClaims, out map[string]any, w primitives.Write, isGenerated bool, generated map[string]bool, issued claimpath.Shape) error {
+func writeOutput(working *primitives.Working, out map[string]any, w primitives.Write, isGenerated bool, generated map[string]bool, issued claimpath.Shape) error {
 	location, err := issued.Locate(w.Path)
 	if err != nil {
 		return err
 	}
-	recordProvenance(generated, workingClaims, location, w.Value, isGenerated)
+	recordProvenance(generated, working.Document(), location, w.Value, isGenerated)
 	if err := working.Write(w.Path, claimpath.Clone(w.Value)); err != nil {
 		return err
 	}
-	return recordOutput(out, workingClaims, location)
+	return recordOutput(out, working.Document(), location)
 }
 
-// recordOutput copies a claim a write at location changed from the working
-// claims into out: the claim at location, or, when location has null or an
-// index, the array its leading keys name.
-func recordOutput(out, workingClaims map[string]any, location claimpath.Pointer) error {
+// recordOutput copies a claim a write at location changed from the issued
+// document into out: the claim at location, or, when location has null or
+// an index, the array its leading keys name.
+func recordOutput(out, document map[string]any, location claimpath.Pointer) error {
 	keys, ok := location.KeyPrefix()
 	if !ok {
 		return fmt.Errorf("output %s starts with no key", location)
 	}
-	value, present, err := claimpath.Nested().Get(workingClaims, keys)
+	value, present, err := claimpath.Nested().Get(document, keys)
 	if err != nil {
 		return err
 	}
 	if !present {
-		return fmt.Errorf("output %s: the claims hold nothing at %s after the write", location, keys)
+		return fmt.Errorf("output %s: the document holds nothing at %s after the write", location, keys)
 	}
 	return claimpath.Nested().Set(out, keys, claimpath.Clone(value))
 }

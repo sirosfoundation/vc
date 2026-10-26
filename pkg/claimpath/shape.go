@@ -13,8 +13,9 @@ import (
 //
 //   - Nested holds a JSON-based credential (SD-JWT VC, W3C) as its JSON
 //     object.
-//   - Presented holds the processed claims of a presented JSON-based
-//     credential.
+//   - Presented holds the claims of a presented JSON-based credential,
+//     with each array element the holder did not disclose at its
+//     position.
 //   - MDocQualified holds a presented ISO mdoc: one flat key
 //     "<namespace>.<element>" per data element.
 //   - MDocElements holds the document data of an ISO mdoc: one key per
@@ -41,17 +42,12 @@ const (
 // Nested returns the shape of a JSON-based credential.
 func Nested() Shape { return Shape{kind: nestedShape} }
 
-// ErrPresentedIndex is the error of a pointer with an index into the
-// claims of a presented credential. An index counts every element of the
-// array as issued, including the ones the holder did not disclose (SD-JWT
-// VC section 5.6). Processing a presentation removes those (RFC 9901
-// section 7.1, step 3.d), so the processed claims hold no element at a
-// known index.
-var ErrPresentedIndex = errors.New("claimpath: an index names no known element of a presented credential, whose processed claims drop the array elements the holder did not disclose")
-
-// Presented returns the shape of the processed claims of a presented
-// JSON-based credential (SD-JWT VC, W3C). It is Nested, and refuses a
-// pointer with an index (see ErrPresentedIndex).
+// Presented returns the shape of the claims of a presented JSON-based
+// credential (SD-JWT VC, W3C). An SD-JWT's claims keep each array element
+// the holder did not disclose at its position, as the {"...": digest} the
+// SD-JWT holds there, since an index counts the elements of the array as
+// issued (SD-JWT VC section 5.6). An index on such an element selects
+// nothing, and null skips it. A value a read returns holds none of them.
 func Presented() Shape { return Shape{kind: presentedShape} }
 
 // MDocQualified returns the shape of a presented mdoc. A dotted name
@@ -88,12 +84,7 @@ func (s Shape) Locate(p Pointer) (Pointer, error) {
 		return Pointer{}, err
 	}
 	switch s.kind {
-	case nestedShape:
-		return p, nil
-	case presentedShape:
-		if p.hasIndex() {
-			return Pointer{}, fmt.Errorf("%w: %s", ErrPresentedIndex, p)
-		}
+	case nestedShape, presentedShape:
 		return p, nil
 	case mdocQualifiedShape:
 		namespace, element, err := p.MDoc()
@@ -194,7 +185,11 @@ func (s Shape) Get(claims map[string]any, p Pointer) (any, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	return location.get(claims)
+	value, present, err := location.get(claims, s.positional())
+	if err != nil || !present || !s.positional() {
+		return value, present, err
+	}
+	return copyValue(value, true), true, nil
 }
 
 // Set writes value at the claim p names in claims.
@@ -212,5 +207,47 @@ func (s Shape) Select(claims map[string]any, p Pointer) ([]any, error) {
 	if err != nil {
 		return nil, err
 	}
-	return location.Select(claims)
+	values, err := location.selectIn(claims, s.positional())
+	if err != nil || !s.positional() {
+		return values, err
+	}
+	for i, value := range values {
+		values[i] = copyValue(value, true)
+	}
+	return values, nil
 }
+
+// Copy writes a deep copy of the claim p names in src at the same claim in
+// dst, and reports whether src holds it. The copy keeps the undisclosed
+// array elements of presented claims at their positions, so an index
+// reads dst as it reads src.
+func (s Shape) Copy(dst, src map[string]any, p Pointer) (bool, error) {
+	location, err := s.LocateOne(p)
+	if err != nil {
+		return false, err
+	}
+	value, present, err := location.get(src, s.positional())
+	if err != nil || !present {
+		return false, err
+	}
+	return true, location.set(dst, Clone(value))
+}
+
+// Processed returns a deep copy of claims held in the shape, as a
+// document holds them. For Presented, it is the processed payload of RFC
+// 9901 section 7.1: the array elements the holder did not disclose are
+// removed. Every consumer that hands presented claims on as a whole takes
+// them through Processed.
+func (s Shape) Processed(claims map[string]any) map[string]any {
+	return typed[map[string]any](copyValue(claims, s.positional()))
+}
+
+// Renumbers reports whether Processed can move the claim p names to
+// another index: p has an index, and the shape is Presented.
+func (s Shape) Renumbers(p Pointer) bool {
+	return s.positional() && slices.ContainsFunc(p.components, func(c Component) bool { return c.kind == indexKind })
+}
+
+// positional reports whether the claims of the shape keep undisclosed
+// array elements at their positions.
+func (s Shape) positional() bool { return s.kind == presentedShape }

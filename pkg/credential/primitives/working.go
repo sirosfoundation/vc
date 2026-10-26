@@ -16,23 +16,28 @@ type Shapes struct {
 	Issued claimpath.Shape
 }
 
-// Working is the claims map a derivation list runs on: the source claims
-// and the claims its earlier derivations wrote. It implements Claims.
+// Working is the claims a derivation list runs on: the source claims it
+// reads, and the document of the credential it issues. The document
+// starts as the processed source claims (claimpath.Shape.Processed) and
+// takes every write. It implements Claims.
 type Working struct {
-	claims  map[string]any
-	shapes  Shapes
-	written []claimpath.Pointer
+	source   map[string]any
+	document map[string]any
+	shapes   Shapes
+	written  []claimpath.Pointer
 }
 
-// NewWorking returns the working claims of a derivation list over claims.
-func NewWorking(claims map[string]any, shapes Shapes) *Working {
-	return &Working{claims: claims, shapes: shapes}
+// NewWorking returns the working claims of a derivation list over the
+// source claims.
+func NewWorking(source map[string]any, shapes Shapes) *Working {
+	return &Working{source: source, document: shapes.Source.Processed(source), shapes: shapes}
 }
 
 // Input implements Claims. A claim whose structure does not match the
 // pointer is the data's fault, so the error is ErrInvalidClaimInput.
 func (w *Working) Input(p claimpath.Pointer) (any, bool, error) {
-	value, present, err := w.InputShape(p).Get(w.claims, p)
+	shape, claims := w.input(p)
+	value, present, err := shape.Get(claims, p)
 	if errors.Is(err, claimpath.ErrMismatch) {
 		return nil, false, fmt.Errorf("%w: %w", ErrInvalidClaimInput, err)
 	}
@@ -41,7 +46,23 @@ func (w *Working) Input(p claimpath.Pointer) (any, bool, error) {
 
 // Issued implements Claims.
 func (w *Working) Issued(p claimpath.Pointer) (any, bool, error) {
-	return w.shapes.Issued.Get(w.claims, p)
+	return w.shapes.Issued.Get(w.document, p)
+}
+
+// Document returns the document of the issued credential, with every
+// write so far.
+func (w *Working) Document() map[string]any {
+	return w.document
+}
+
+// Pin writes a deep copy of each pinned claim, by name, into the source
+// claims and into the document. A copy each time keeps pinned as it was
+// whatever a later derivation writes into the claim.
+func (w *Working) Pin(pinned map[string]any) {
+	for name, value := range pinned {
+		w.source[name] = claimpath.Clone(value)
+		w.document[name] = claimpath.Clone(value)
+	}
 }
 
 // Named implements Claims.
@@ -53,15 +74,21 @@ func (w *Working) Named(name string) (claimpath.Pointer, error) {
 // when an earlier derivation writes the pointer or a prefix of it, the
 // source shape otherwise.
 func (w *Working) InputShape(p claimpath.Pointer) claimpath.Shape {
-	if writtenBefore(w.written, p) {
-		return w.shapes.Issued
-	}
-	return w.shapes.Source
+	shape, _ := w.input(p)
+	return shape
 }
 
-// Write writes value at a pointer into the issued claims.
+// input returns the shape and the claims an input pointer reads.
+func (w *Working) input(p claimpath.Pointer) (claimpath.Shape, map[string]any) {
+	if writtenBefore(w.written, p) {
+		return w.shapes.Issued, w.document
+	}
+	return w.shapes.Source, w.source
+}
+
+// Write writes value at a pointer into the document.
 func (w *Working) Write(p claimpath.Pointer, value any) error {
-	return w.shapes.Issued.Set(w.claims, p, value)
+	return w.shapes.Issued.Set(w.document, p, value)
 }
 
 // Wrote records the claims a derivation writes, for the inputs of the
@@ -85,6 +112,9 @@ func writtenBefore(written []claimpath.Pointer, p claimpath.Pointer) bool {
 //     an earlier derivation's output, or one beneath it, is a claim of the
 //     issued document: the derivations chain.
 //   - An hkdf input is a claim of the source data.
+//   - An unset output with an input that reads presented claims by index
+//     is refused: the document holds the processed claims, where that
+//     element can sit at another index (claimpath.Shape.Renumbers).
 func ResolveDerivations(list []Derivation, shapes Shapes) error {
 	var written []claimpath.Pointer
 	for i := range list {
@@ -107,7 +137,9 @@ func ResolveDerivations(list []Derivation, shapes Shapes) error {
 // resolveArgs resolves the claims of one primitive's arguments.
 func resolveArgs(a Applier, shapes Shapes, written []claimpath.Pointer) error {
 	input, hasInput := pointerField(a, "Input")
-	if output, ok := pointerField(a, "Output"); ok {
+	output, hasOutput := pointerField(a, "Output")
+	inPlace := hasInput && hasOutput && output.IsZero()
+	if hasOutput {
 		if err := resolveOutput(output, input, shapes.Issued); err != nil {
 			return fmt.Errorf("output: %w", err)
 		}
@@ -117,6 +149,9 @@ func resolveArgs(a Applier, shapes Shapes, written []claimpath.Pointer) error {
 	}
 	if err := resolveInput(input, shapes, written); err != nil {
 		return fmt.Errorf("input: %w", err)
+	}
+	if inPlace && !writtenBefore(written, *input) && shapes.Source.Renumbers(*input) {
+		return fmt.Errorf("output: the input %s reads the presented claims by index, and the issued document can hold that element at another index; set output", *input)
 	}
 	return nil
 }

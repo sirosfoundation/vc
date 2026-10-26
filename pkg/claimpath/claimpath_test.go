@@ -97,7 +97,6 @@ func TestShapes(t *testing.T) {
 		{"mdoc document refuses three keys", elements, map[string]any{}, Keys("a", "b", "c"), nil, true},
 		{"one claim refuses null", Nested(), map[string]any{"a": []any{"x"}}, New(Key("a"), All()), nil, true},
 		{"a presented credential's claim", Presented(), map[string]any{"a": map[string]any{"b": "x"}}, Keys("a", "b"), "x", false},
-		{"a presented credential refuses an index", Presented(), map[string]any{"a": []any{"x"}}, New(Key("a"), Index(0)), nil, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -137,6 +136,43 @@ func TestCheckResolved(t *testing.T) {
 	cfg.Entries["pid"].Leaves[1].Path = Keys("b")
 	if err := CheckResolved(cfg); err != nil {
 		t.Fatalf("CheckResolved() = %v on resolved pointers", err)
+	}
+}
+
+// TestPresentedPositions reads the claims of an SD-JWT presented without
+// the disclosure of nationalities[0]. An index counts the array as issued
+// (SD-JWT VC section 5.6), so [nationalities, 1] is "FR", a copy reads the
+// same, and no value a read returns carries the undisclosed element.
+func TestPresentedPositions(t *testing.T) {
+	presented := map[string]any{
+		"nationalities": []any{map[string]any{"...": "digest-of-DE"}, "FR", "US"},
+	}
+	at := func(i uint) Pointer { return New(Key("nationalities"), Index(i)) }
+	shape := Presented()
+
+	if got, present, err := shape.Get(presented, at(1)); err != nil || !present || got != "FR" {
+		t.Errorf("Get(%s) = %v, %v, %v; want FR", at(1), got, present, err)
+	}
+	if got, present, err := shape.Get(presented, at(0)); err != nil || present {
+		t.Errorf("Get(%s) = %v, %v, %v; want an absent claim", at(0), got, present, err)
+	}
+	all, err := shape.Select(presented, New(Key("nationalities"), All()))
+	if want := []any{"FR", "US"}; err != nil || !reflect.DeepEqual(all, want) {
+		t.Errorf("Select([nationalities, null]) = %v, %v; want %v", all, err, want)
+	}
+	whole, _, err := shape.Get(presented, Keys("nationalities"))
+	if want := []any{"FR", "US"}; err != nil || !reflect.DeepEqual(whole, want) {
+		t.Errorf("Get([nationalities]) = %v, %v; want %v", whole, err, want)
+	}
+	copied := map[string]any{}
+	if present, err := shape.Copy(copied, presented, Keys("nationalities")); err != nil || !present {
+		t.Fatalf("Copy([nationalities]) = %v, %v", present, err)
+	}
+	if got, _, err := shape.Get(copied, at(1)); err != nil || got != "FR" {
+		t.Errorf("Get(%s) of the copy = %v, %v; want FR", at(1), got, err)
+	}
+	if got := shape.Processed(presented); !reflect.DeepEqual(got, map[string]any{"nationalities": []any{"FR", "US"}}) {
+		t.Errorf("Processed() = %v", got)
 	}
 }
 

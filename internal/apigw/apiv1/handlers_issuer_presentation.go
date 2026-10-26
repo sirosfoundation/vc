@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/SUNET/vc/pkg/cache"
-	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential"
 	"github.com/SUNET/vc/pkg/model"
 )
@@ -22,16 +21,16 @@ func (c *Client) buildPresentationDocument(scope string, pScope model.Presentati
 		return nil, errors.New("no verified presentation claims available for issuance")
 	}
 
-	// Start from a deep copy of the verified presentation claims so a VCTM
-	// claim that the presented credential already carries (and that no
-	// derivation rewrites) still lands in the issued document. The VCTM
-	// filter below drops anything the target credential does not declare.
-	doc := claimpath.Clone(authCtx.VerifiedClaims)
-
 	shapes, err := c.cfg.DerivationShapes(scope, pScope.FromScope)
 	if err != nil {
 		return nil, err
 	}
+
+	// Start from the processed verified presentation claims so a VCTM
+	// claim that the presented credential already carries (and that no
+	// derivation rewrites) still lands in the issued document. The VCTM
+	// filter below drops anything the target credential does not declare.
+	doc := shapes.Source.Processed(authCtx.VerifiedClaims)
 	derived, err := credential.ApplyDerivations(pScope.Derivations, authCtx.VerifiedClaims, now, shapes)
 	if err != nil {
 		return nil, err

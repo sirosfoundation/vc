@@ -20,6 +20,12 @@ var ErrMismatch = errors.New("claimpath: the claims do not have the structure th
 // null or an index on a non-array are an error, and so is an empty final
 // selection.
 func (p Pointer) Select(root map[string]any) ([]any, error) {
+	return p.selectIn(root, false)
+}
+
+// selectIn is Select, which skips the undisclosed array elements of
+// presented claims when positional is set.
+func (p Pointer) selectIn(root map[string]any, positional bool) ([]any, error) {
 	components, err := p.Components()
 	if err != nil {
 		return nil, err
@@ -28,7 +34,7 @@ func (p Pointer) Select(root map[string]any) ([]any, error) {
 	for i, c := range components {
 		next := make([]any, 0, len(selection))
 		for _, element := range selection {
-			children, err := c.children(element)
+			children, err := c.children(element, positional)
 			if err != nil {
 				return nil, fmt.Errorf("%w: %s, element %d: %w", ErrMismatch, p, i, err)
 			}
@@ -42,8 +48,10 @@ func (p Pointer) Select(root map[string]any) ([]any, error) {
 	return selection, nil
 }
 
-// children returns what the component selects in one element.
-func (c Component) children(element any) ([]any, error) {
+// children returns what the component selects in one element. When
+// positional is set, an array keeps the elements the holder did not
+// disclose at their positions, and null and an index select none of them.
+func (c Component) children(element any, positional bool) ([]any, error) {
 	if c.kind == keyKind {
 		object, ok := element.(map[string]any)
 		if !ok {
@@ -59,12 +67,27 @@ func (c Component) children(element any) ([]any, error) {
 		return nil, fmt.Errorf("%s on a %T", c, element)
 	}
 	if c.kind == allKind {
-		return array, nil
+		return disclosedElements(array, positional), nil
 	}
 	if c.index < uint(len(array)) {
-		return []any{array[c.index]}, nil
+		return disclosedElements(array[c.index:c.index+1], positional), nil
 	}
 	return nil, nil
+}
+
+// disclosedElements returns the elements, without the undisclosed ones
+// when positional is set.
+func disclosedElements(elements []any, positional bool) []any {
+	if !positional {
+		return elements
+	}
+	out := make([]any, 0, len(elements))
+	for _, element := range elements {
+		if !undisclosed(element) {
+			out = append(out, element)
+		}
+	}
+	return out
 }
 
 // String renders the component as its JSON value.
@@ -99,11 +122,13 @@ func arrayValue(value any) (reflect.Value, bool) {
 	return rv, rv.Kind() == reflect.Slice
 }
 
-// get returns the one claim a pointer of keys and indices selects.
-func (p Pointer) get(root map[string]any) (any, bool, error) {
+// get returns the one claim a pointer of keys and indices selects, with
+// the undisclosed array elements of presented claims when positional is
+// set (see children).
+func (p Pointer) get(root map[string]any, positional bool) (any, bool, error) {
 	var current any = root
 	for i, c := range p.components {
-		children, err := c.children(current)
+		children, err := c.children(current, positional)
 		if err != nil {
 			return nil, false, fmt.Errorf("%w: %s, element %d: %w", ErrMismatch, p, i, err)
 		}
@@ -138,7 +163,7 @@ func (p Pointer) set(root map[string]any, value any) error {
 // creates an object at a missing key that the next component, a key,
 // passes through.
 func (c Component) child(container any, next Component) (any, error) {
-	children, err := c.children(container)
+	children, err := c.children(container, false)
 	if err != nil {
 		return nil, err
 	}

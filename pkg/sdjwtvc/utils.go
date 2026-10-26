@@ -13,7 +13,11 @@ import (
 
 // ParsedCredential represents a parsed SD-JWT credential with claims and disclosures
 type ParsedCredential struct {
-	// Claims contains the credential claims (base JWT claims plus disclosed selective disclosures)
+	// Claims contains the credential claims: the issuer-signed claims with
+	// the presented disclosures in place. Each array element the holder
+	// did not disclose stays at its position as the {"...": digest} the
+	// SD-JWT holds there (claimpath.Presented). Shape.Processed returns the
+	// processed payload of RFC 9901 section 7.1.
 	Claims map[string]any
 	// Disclosures contains the raw selective disclosure strings
 	Disclosures []string
@@ -60,10 +64,6 @@ func (t Token) Parse() (*ParsedCredential, error) {
 	if err := resolveDisclosuresRecursive(claims, disclosures); err != nil {
 		return nil, err
 	}
-
-	// Remove any unresolved array element markers {"...": hash} left behind
-	// when the wallet omits element disclosures from the token.
-	cleanUnresolvedMarkers(claims)
 
 	return &ParsedCredential{
 		Claims:      claims,
@@ -212,43 +212,6 @@ func resolveArrayNode(arr []any, disclosureMap map[string]*sdParsedDisclosure) [
 			result = append(result, v)
 		case []any:
 			result = append(result, resolveArrayNode(v, disclosureMap))
-		default:
-			result = append(result, elem)
-		}
-	}
-	return result
-}
-
-// cleanUnresolvedMarkers removes leftover {"...": hash} array element markers
-// from the claims tree. These remain when the wallet discloses a claim whose
-// value contains array element markers but doesn't include the corresponding
-// element disclosures in the token.
-func cleanUnresolvedMarkers(node map[string]any) {
-	for key, value := range node {
-		switch v := value.(type) {
-		case map[string]any:
-			cleanUnresolvedMarkers(v)
-		case []any:
-			node[key] = cleanArrayMarkers(v)
-		}
-	}
-}
-
-func cleanArrayMarkers(arr []any) []any {
-	result := make([]any, 0, len(arr))
-	for _, elem := range arr {
-		switch v := elem.(type) {
-		case map[string]any:
-			if len(v) == 1 {
-				if _, isMarker := v["..."]; isMarker {
-					// Skip unresolved marker
-					continue
-				}
-			}
-			cleanUnresolvedMarkers(v)
-			result = append(result, v)
-		case []any:
-			result = append(result, cleanArrayMarkers(v))
 		default:
 			result = append(result, elem)
 		}

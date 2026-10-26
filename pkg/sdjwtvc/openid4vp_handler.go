@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/SUNET/vc/pkg/claimpath"
 )
 
 // SDJWTHandler handles SD-JWT format credentials in OpenID4VP flows.
@@ -215,7 +217,8 @@ func IsSDJWTFormat(vpToken string) bool {
 	return strings.Count(firstPart, ".") == 2
 }
 
-// ExtractSDJWTClaims extracts claims from an SD-JWT VP token without full verification.
+// ExtractSDJWTClaims returns the processed payload (RFC 9901 section 7.1)
+// of an SD-JWT VP token without full verification.
 // Use this for testing or when verification is handled separately.
 func ExtractSDJWTClaims(vpToken string) (map[string]any, error) {
 	if vpToken == "" {
@@ -227,7 +230,7 @@ func ExtractSDJWTClaims(vpToken string) (map[string]any, error) {
 		return nil, fmt.Errorf("failed to parse SD-JWT: %w", err)
 	}
 
-	return parsed.Claims, nil
+	return claimpath.Presented().Processed(parsed.Claims), nil
 }
 
 // SDJWTClaimMapping provides standard mappings from SD-JWT VC claims to OIDC claims.

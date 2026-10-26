@@ -15,9 +15,8 @@ import { browserHandoffEnv, handOffToWallet } from "./wallet-handoff.js";
 // keys, array indices, and null for every element of an array.
 const arrayIndexSchema = v.pipe(v.number(), v.integer(), v.minValue(0));
 const claimPathSchema = v.array(v.union([v.string(), v.null(), arrayIndexSchema]));
-// A validation reads one claim of the presented credential, which holds no
-// array positions, so its pointer is keys.
-const singleClaimPathSchema = v.array(v.string());
+// A validation reads one claim, so its pointer has no null.
+const singleClaimPathSchema = v.array(v.union([v.string(), arrayIndexSchema]));
 
 /** @typedef {(string|number|null)[]} ClaimPath */
 
@@ -270,23 +269,10 @@ function renderClaimNode(rows, name, value, depth) {
         return;
     }
     if (Array.isArray(value)) {
-        const parts = [];
-        for (const elem of value) {
-            if (elem && typeof elem === "object" && !Array.isArray(elem)) {
-                const keys = Object.keys(elem);
-                if (keys.length === 1 && keys[0] === "...") continue;
-            }
-            parts.push(String(elem));
-        }
-        if (parts.length > 0) {
-            rows.push(
-                `<tr><td style="padding-left:${indent}px;">${escapeHtml(name)}</td><td><code>${escapeHtml(parts.join(", "))}</code></td></tr>`,
-            );
-        } else {
-            rows.push(
-                `<tr><td style="padding-left:${indent}px;">${escapeHtml(name)}</td><td><code>[]</code> <em>(element details not disclosed by wallet)</em></td></tr>`,
-            );
-        }
+        const text = value.length > 0 ? value.map(String).join(", ") : "[]";
+        rows.push(
+            `<tr><td style="padding-left:${indent}px;">${escapeHtml(name)}</td><td><code>${escapeHtml(text)}</code></td></tr>`,
+        );
         return;
     }
     const valStr = String(value);
@@ -299,38 +285,6 @@ function renderClaimNode(rows, name, value, depth) {
             `<tr><td style="padding-left:${indent}px;">${escapeHtml(name)}</td><td><code>${escapeHtml(valStr)}</code></td></tr>`,
         );
     }
-}
-
-/**
- * Deep-clean SD-JWT unresolved array-element markers ({"...": hash}) from
- * credential data, matching cleanUnresolvedMarkersForDisplay in
- * internal/verifier/httpserver/service.go. Used for the "Credential data"
- * JSON pretty-print under the inline result view.
- *
- * @param {any} value
- * @returns {any}
- */
-function cleanUnresolvedMarkers(value) {
-    if (Array.isArray(value)) {
-        const out = [];
-        for (const elem of value) {
-            if (elem && typeof elem === "object" && !Array.isArray(elem)) {
-                const keys = Object.keys(elem);
-                if (keys.length === 1 && keys[0] === "...") continue;
-            }
-            out.push(cleanUnresolvedMarkers(elem));
-        }
-        return out;
-    }
-    if (value !== null && typeof value === "object") {
-        /** @type {Record<string, any>} */
-        const out = {};
-        for (const [k, v] of Object.entries(value)) {
-            out[k] = cleanUnresolvedMarkers(v);
-        }
-        return out;
-    }
-    return value;
 }
 
 // SESSION_STORAGE_KEY names the sessionStorage entry that carries the
@@ -520,7 +474,7 @@ Alpine.data("app", () => ({
     /** @type {DCQLQuery | null} */
     dcqlQuery: null,
 
-    /** @type {Record<string, Array<{rule: string, path: string[], value: any}>> | null} */
+    /** @type {Record<string, Array<{rule: string, path: (string|number)[], value: any}>> | null} */
     validations: null,
 
     /** @type {PresentationDefinition | null} */
@@ -1354,11 +1308,6 @@ Alpine.data("app", () => ({
             renderClaimNode(rows, k, claims[k], 0);
         }
         return rows.join("");
-    },
-
-    /** @param {any} value */
-    cleanCredentialForDisplay(value) {
-        return cleanUnresolvedMarkers(value);
     },
 
     /**

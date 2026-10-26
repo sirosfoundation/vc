@@ -37,11 +37,11 @@ type IdentityMatch struct {
 	// Claims lists the claims of the presented credential, each with the
 	// test it must pass.
 	//
-	// A path is a claims path pointer of keys, or a dotted claim name read
-	// the way the presented credential's format reads it - nested for
-	// SD-JWT VC, "<namespace>.<element>" for mdoc - so a caller writes the
-	// same path it would write anywhere else in this API. The earlier
-	// form, an object from dotted claim names to tests, is read too.
+	// A path is a claims path pointer, or a dotted claim name read the way
+	// the presented credential's format reads it - nested for SD-JWT VC,
+	// "<namespace>.<element>" for mdoc - so a caller writes the same path
+	// it would write anywhere else in this API. The earlier form, an
+	// object from dotted claim names to tests, is read too.
 	Claims ClaimMatches `json:"claims" bson:"claims" validate:"required,min=1"`
 }
 

@@ -138,9 +138,8 @@ type DatastoreScope struct {
 // Each entry represents one acceptable credential type the wallet can present.
 type AuthScopeEntry struct {
 	// AuthClaims lists the identity claims to extract from this credential
-	// type, each a claims path pointer of keys into the presented
-	// credential. A dotted string is read as a claim of the presented
-	// credential.
+	// type, each a claims path pointer into the presented credential. A
+	// dotted string is read as a claim of the presented credential.
 	AuthClaims []claimpath.Pointer `yaml:"auth_claims" validate:"required,min=1,dive,required" doc_example:"[[given_name], [family_name], [birth_date]]"`
 
 	// IdentityAttributes renames an auth claim to the identity-mapping
@@ -406,10 +405,9 @@ type PresentationScope struct {
 
 // RequiredClaim is a claim a presented credential must carry.
 type RequiredClaim struct {
-	// Path is the claim. A null selects every element of an array, and
-	// the claim is present when it selects one. It has no index: the
-	// presented claims drop the array elements the holder did not
-	// disclose, so an element has no known index.
+	// Path is the claim. A null selects every element of an array the
+	// holder disclosed, and the claim is present when it selects one. An
+	// index counts the elements as issued, the undisclosed ones included.
 	Path claimpath.Pointer `yaml:"path" validate:"required" doc_example:"[nationalities, null]"`
 	// Values is the allow-list: empty lets any value pass. Otherwise a
 	// selected value must equal one of the listed strings, or, for an

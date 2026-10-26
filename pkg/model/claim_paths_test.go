@@ -121,9 +121,14 @@ func TestResolveClaimPathsRefusals(t *testing.T) {
 			accepted: "assertion:\n  scopes:\n    ehic:\n      auth_provider: oidc\n      derivations:\n        - trim: {input: [nationalities, 0], output: [nationality]}\n",
 		},
 		{
-			name:     "a claim of a presented credential has no index",
-			refused:  datastore("          auth_claims: [[nationalities, 0]]\n          identity_attributes: [{path: [nationalities, 0], attribute: given_name}]\n"),
-			accepted: datastore("          auth_claims: [[nationalities]]\n          identity_attributes: [{path: [nationalities], attribute: given_name}]\n"),
+			name:     "an auth claim names an identity attribute",
+			refused:  datastore("          auth_claims: [[nationalities, 0]]\n"),
+			accepted: datastore("          auth_claims: [[nationalities, 0]]\n          identity_attributes: [{path: [nationalities, 0], attribute: given_name}]\n"),
+		},
+		{
+			name:     "an input read by index from a presented credential needs an output",
+			refused:  "presentation:\n  scopes:\n    ehic:\n      from_scope: pid\n      derivations:\n        - trim: {input: [nationalities, 1]}\n",
+			accepted: "presentation:\n  scopes:\n    ehic:\n      from_scope: pid\n      derivations:\n        - trim: {input: [nationalities, 1], output: [nationality]}\n",
 		},
 		{
 			name:     "a default names its claim by keys",

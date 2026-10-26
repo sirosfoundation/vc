@@ -16,8 +16,8 @@ import (
 //
 //   - A claim of a presented credential: an mdoc claim splits at its last
 //     dot into [namespace, element], and a name without one is an element
-//     of org.iso.18013.5.1. A JSON-based claim splits on dots. A pointer
-//     into a presented credential has no index (claimpath.Presented).
+//     of org.iso.18013.5.1. A JSON-based claim splits on dots. An index
+//     counts the elements of an array as issued (claimpath.Presented).
 //   - A claim of the issued credential's document: a JSON-based claim
 //     splits on dots. An mdoc claim is the element the MDDL declares in one
 //     namespace, or a document key the MDDL does not declare.
@@ -186,7 +186,8 @@ func (c *Cfg) resolveAuthScope(entry *AuthScopeEntry, scope, authScope string) e
 }
 
 // resolveIdentityClaims reads the auth claims and identity attribute
-// renames in the presented credential.
+// renames in the presented credential, and requires each auth claim to
+// name an identity attribute.
 func resolveIdentityClaims(entry *AuthScopeEntry, presented claimpath.Shape) error {
 	for i := range entry.AuthClaims {
 		if err := presented.ResolveOne(&entry.AuthClaims[i]); err != nil {
@@ -196,6 +197,11 @@ func resolveIdentityClaims(entry *AuthScopeEntry, presented claimpath.Shape) err
 	for i := range entry.IdentityAttributes {
 		if err := presented.ResolveOne(&entry.IdentityAttributes[i].Path); err != nil {
 			return fmt.Errorf("identity_attributes[%d].path: %w", i, err)
+		}
+	}
+	for i, claim := range entry.AuthClaims {
+		if _, ok := entry.IdentityAttributes.For(claim); !ok {
+			return fmt.Errorf("auth_claims[%d]: %s ends in no key, so it needs an identity_attributes entry", i, claim)
 		}
 	}
 	return nil

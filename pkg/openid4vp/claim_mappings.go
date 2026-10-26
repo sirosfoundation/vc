@@ -86,13 +86,13 @@ func (m ClaimMappings) IsZero() bool {
 	return !m.PassThrough && len(m.Mappings) == 0
 }
 
-// passThroughClaims returns every claim under its own name, without the
-// internal SD-JWT claims.
+// passThroughClaims returns every processed claim under its own name,
+// without the internal SD-JWT claims.
 func passThroughClaims(vpClaims map[string]any) map[string]any {
-	oidcClaims := make(map[string]any, len(vpClaims))
-	for key, value := range vpClaims {
-		if !isInternalClaim(key) {
-			oidcClaims[key] = value
+	oidcClaims := claimpath.Presented().Processed(vpClaims)
+	for key := range oidcClaims {
+		if isInternalClaim(key) {
+			delete(oidcClaims, key)
 		}
 	}
 	return oidcClaims

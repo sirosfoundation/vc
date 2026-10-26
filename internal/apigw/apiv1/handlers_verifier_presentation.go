@@ -69,14 +69,14 @@ func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *
 	// consent UI sees the same claims (e.g. age_over_*, over_*_this_year)
 	// that will actually be issued — walking the target VCTM against only
 	// the raw verified claims would otherwise render an empty preview.
-	// Deep clone, not maps.Copy: MergeNestedClaims below writes INTO an
-	// existing nested map, so a shallow copy shares e.g. the "identity"
+	// A deep copy, which Processed is: MergeNestedClaims below writes INTO
+	// an existing nested map, so a shallow copy shares e.g. the "identity"
 	// sub-map with verified - and verified is authCtx.VerifiedClaims, which
 	// was just persisted and which issuance rebuilds the real document from.
 	// A derivation targeting a nested claim would otherwise write its result
-	// into the holder's verified claims. buildPresentationDocument already
-	// clones for the same reason.
-	previewData := claimpath.Clone(verified)
+	// into the holder's verified claims. buildPresentationDocument builds
+	// its document the same way.
+	previewData := shapes.Source.Processed(verified)
 	now := time.Now()
 	derived, err := credential.ApplyDerivations(pScope.Derivations, verified, now, shapes)
 	if err != nil {
@@ -150,20 +150,21 @@ func verifyRequiredClaim(shape claimpath.Shape, presented map[string]any, claim 
 // copyPresentedClaim copies the claim at path, up to its first null or
 // index, from presented into verified, in the same shape. The downstream
 // VCTM filter (which walks nested maps) then sees it under the shape the
-// presented credential used, and a claim's array keeps its positions.
+// presented credential used, and a claim's array keeps its positions, the
+// undisclosed elements included (claimpath.Shape.Copy).
 func copyPresentedClaim(shape claimpath.Shape, verified, presented map[string]any, path claimpath.Pointer) error {
 	keys, ok := path.KeyPrefix()
 	if !ok {
 		return fmt.Errorf("claim %s starts with no key", path)
 	}
-	value, present, err := shape.Get(presented, keys)
+	present, err := shape.Copy(verified, presented, keys)
 	if err != nil {
 		return fmt.Errorf("claim %s: %w", path, err)
 	}
 	if !present {
 		return fmt.Errorf("claim %s: the presentation holds no claim at %s", path, keys)
 	}
-	return shape.Set(verified, keys, value)
+	return nil
 }
 
 // isMDocLikeFormat returns true for every DCQL mdoc format variant whose

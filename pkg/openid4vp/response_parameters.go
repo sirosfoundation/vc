@@ -111,7 +111,9 @@ type ResponseParameters struct {
 	PresentationSubmission *PresentationSubmission `json:"presentation_submission,omitempty" bson:"presentation_submission"`
 }
 
-// BuildCredential unwraps the VPToken from the ResponseParameters
+// BuildCredential unwraps the VPToken from the ResponseParameters. An
+// SD-JWT's claims keep each undisclosed array element at its position
+// (claimpath.Presented).
 func (r *ResponseParameters) BuildCredential() (map[string]any, error) {
 	if isMDocFormatToken(r.VPToken) {
 		return extractMDocClaimsFromToken(r.VPToken)

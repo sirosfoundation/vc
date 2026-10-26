@@ -305,31 +305,18 @@ func renderNode(sb *strings.Builder, name string, value any, depth int) {
 			renderNode(sb, childKey, v[childKey], depth+1)
 		}
 	case []any:
-		// Render array elements, handling unresolved SD-JWT markers {"...": hash}
 		parts := make([]string, 0, len(v))
 		for _, elem := range v {
-			if m, ok := elem.(map[string]any); ok {
-				if _, isMarker := m["..."]; isMarker && len(m) == 1 {
-					// Unresolved array element disclosure — wallet didn't include element disclosure.
-					// Skip the marker silently; we'll show whatever was actually disclosed.
-					continue
-				}
-			}
 			parts = append(parts, fmt.Sprintf("%v", elem))
 		}
+		text := "[]"
 		if len(parts) > 0 {
-			fmt.Fprintf(sb,
-				`<tr><td style="padding-left:%dpx;">%s</td><td><code>%s</code></td></tr>`,
-				indent, template.HTMLEscapeString(name), template.HTMLEscapeString(strings.Join(parts, ", ")),
-			)
-		} else {
-			// Array was disclosed but contained only unresolved element markers.
-			// Show the claim name to confirm it was disclosed.
-			fmt.Fprintf(sb,
-				`<tr><td style="padding-left:%dpx;">%s</td><td><code>[]</code> <em>(element details not disclosed by wallet)</em></td></tr>`,
-				indent, template.HTMLEscapeString(name),
-			)
+			text = strings.Join(parts, ", ")
 		}
+		fmt.Fprintf(sb,
+			`<tr><td style="padding-left:%dpx;">%s</td><td><code>%s</code></td></tr>`,
+			indent, template.HTMLEscapeString(name), template.HTMLEscapeString(text),
+		)
 	default:
 		valStr := fmt.Sprintf("%v", value)
 		// Render picture as image
@@ -354,32 +341,6 @@ func sortedKeys(m map[string]any) []string {
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-// cleanUnresolvedMarkersForDisplay deep-copies the value, removing SD-JWT array element
-// markers ({"...": hash}) so the JSON output is clean for display purposes.
-func cleanUnresolvedMarkersForDisplay(v any) any {
-	switch val := v.(type) {
-	case map[string]any:
-		result := make(map[string]any, len(val))
-		for k, child := range val {
-			result[k] = cleanUnresolvedMarkersForDisplay(child)
-		}
-		return result
-	case []any:
-		result := make([]any, 0, len(val))
-		for _, elem := range val {
-			if m, ok := elem.(map[string]any); ok && len(m) == 1 {
-				if _, isMarker := m["..."]; isMarker {
-					continue
-				}
-			}
-			result = append(result, cleanUnresolvedMarkersForDisplay(elem))
-		}
-		return result
-	default:
-		return v
-	}
 }
 
 // defaultUserSessionMaxAge is the lifetime of the verifier-OP's user session
@@ -467,10 +428,9 @@ func mountStaticAssets(engine *gin.Engine) error {
 // htmlTemplates parses the embedded HTML with the view helpers the templates call.
 func htmlTemplates() *template.Template {
 	tmpl := template.New("").Funcs(template.FuncMap{
-		"toJSON": func(v any) string {
-			cleaned := cleanUnresolvedMarkersForDisplay(v)
-			b, _ := json.MarshalIndent(cleaned, "", "  ")
-			return string(b)
+		"toJSON": func(v any) (string, error) {
+			b, err := json.MarshalIndent(v, "", "  ")
+			return string(b), err
 		},
 		"json": func(v any) (any, error) {
 			jsonBytes, err := json.Marshal(v)

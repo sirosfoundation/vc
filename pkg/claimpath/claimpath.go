@@ -266,11 +266,6 @@ func (p Pointer) SelectsOne() bool {
 	return p.dotted == "" && len(p.components) > 0 && !slices.ContainsFunc(p.components, Component.IsAll)
 }
 
-// hasIndex reports whether a pointer has an index component.
-func (p Pointer) hasIndex() bool {
-	return slices.ContainsFunc(p.components, func(c Component) bool { return c.kind == indexKind })
-}
-
 // ErrFillsElement is the error of a pointer with null or an index where a
 // write fills an absent claim. A write creates the objects a missing key
 // passes through, and never an array or an array element.

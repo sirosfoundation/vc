@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/SUNET/vc/pkg/cache"
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/jose"
 	"github.com/SUNET/vc/pkg/mdoc"
 	"github.com/SUNET/vc/pkg/model"
@@ -333,7 +334,7 @@ func (c *Client) VerificationDirectPost(ctx context.Context, req *VerificationDi
 			// Build display claims from the resolved credential map.
 			// This ensures nested disclosures (place_of_birth, address, etc.)
 			// are shown with their resolved values rather than raw _sd hashes.
-			displayClaims := credentialToDisclosers(parsed.Claims)
+			displayClaims := credentialToDisclosers(claimpath.Presented().Processed(parsed.Claims))
 
 			// Add to per-scope credential cache
 			scopeCredentials[scope] = append(scopeCredentials[scope], sdjwtvc.CredentialCache{
@@ -756,7 +757,7 @@ func (c *Client) VerificationDirectPost(ctx context.Context, req *VerificationDi
 				bindingCredentials = append(bindingCredentials, openid4vp.VerifiedCredentialBinding{
 					Scope:               scope,
 					HolderKeyThumbprint: tp,
-					Claims:              cc.Credential,
+					Claims:              claimpath.Presented().Processed(cc.Credential),
 				})
 			}
 		}
@@ -789,7 +790,7 @@ func (c *Client) VerificationDirectPost(ctx context.Context, req *VerificationDi
 	// Flatten per-scope credentials into ordered slice for caching
 	credentialCaches := make([]sdjwtvc.CredentialCache, 0, len(authCtx.Scopes))
 	for _, scope := range authCtx.Scopes {
-		credentialCaches = append(credentialCaches, scopeCredentials[scope]...)
+		credentialCaches = append(credentialCaches, processedCredentials(scopeCredentials[scope])...)
 	}
 
 	// Cache validated credentials. responseCode is a fresh UUID, so SetNX
@@ -1017,6 +1018,17 @@ func knownQueryKey(authCtx *cache.AuthorizationContext, key string) bool {
 	return slices.ContainsFunc(authCtx.DCQLQuery.Credentials, func(cred openid4vp.CredentialQuery) bool {
 		return cred.ID == key
 	})
+}
+
+// processedCredentials returns the credentials with their processed claims
+// (claimpath.Shape.Processed), as they leave the verifier.
+func processedCredentials(credentials []sdjwtvc.CredentialCache) []sdjwtvc.CredentialCache {
+	out := make([]sdjwtvc.CredentialCache, len(credentials))
+	for i, credential := range credentials {
+		credential.Credential = claimpath.Presented().Processed(credential.Credential)
+		out[i] = credential
+	}
+	return out
 }
 
 func (c *Client) VerificationCallback(ctx context.Context, req *VerificationCallbackRequest) (*VerificationCallbackResponse, error) {

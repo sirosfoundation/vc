@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/sdjwtvc"
 	"github.com/SUNET/vc/pkg/vc20/credential"
 
@@ -43,8 +44,20 @@ func NewClaimsExtractor() *ClaimsExtractor {
 //   - mdoc: CBOR-based mobile document
 //   - SD-JWT: dot-separated JWT with selective disclosures
 //
-// Returns a merged map of disclosed claims from all credentials.
+// Returns the merged processed claims (RFC 9901 section 7.1) of all
+// credentials.
 func (ce *ClaimsExtractor) ExtractClaimsFromVPToken(ctx context.Context, vpToken string) (map[string]any, error) {
+	claims, err := ce.presentedClaims(ctx, vpToken)
+	if err != nil {
+		return nil, err
+	}
+	return claimpath.Presented().Processed(claims), nil
+}
+
+// presentedClaims returns the merged claims of all credentials of a VP
+// token. An SD-JWT's claims keep each undisclosed array element at its
+// position (claimpath.Presented).
+func (ce *ClaimsExtractor) presentedClaims(ctx context.Context, vpToken string) (map[string]any, error) {
 	if vpToken == "" {
 		return nil, fmt.Errorf("VP token is empty")
 	}
@@ -319,7 +332,7 @@ func (ce *ClaimsExtractor) ExtractAndMapClaims(
 	vpToken string,
 	claimMappings ClaimMappings,
 ) (map[string]any, error) {
-	vpClaims, err := ce.ExtractClaimsFromVPToken(ctx, vpToken)
+	vpClaims, err := ce.presentedClaims(ctx, vpToken)
 	if err != nil {
 		return nil, fmt.Errorf("extraction failed: %w", err)
 	}
