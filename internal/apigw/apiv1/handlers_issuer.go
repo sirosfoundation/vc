@@ -15,6 +15,7 @@ import (
 	"github.com/SUNET/vc/internal/gen/issuer/apiv1_issuer"
 	"github.com/SUNET/vc/internal/gen/registry/apiv1_registry"
 	"github.com/SUNET/vc/pkg/bbs"
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential"
 	"github.com/SUNET/vc/pkg/credential/primitives"
 	"github.com/SUNET/vc/pkg/crypto"
@@ -350,7 +351,7 @@ func (c *Client) VCICredential(ctx context.Context, req *openid4vci.CredentialRe
 				// shallow maps.Clone would still share nested references
 				// (e.g. the "identity" sub-map) with the cache and let a
 				// derivation targeting a nested claim corrupt it.
-				docData := credential.CloneNestedClaims(document.DocumentData)
+				docData := claimpath.Clone(document.DocumentData)
 
 				// What the holder PROVED, kept aside before derivations
 				// run. A derivation writing one of these destinations -

@@ -3,7 +3,6 @@ package credential
 import (
 	"errors"
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/SUNET/vc/pkg/claimpath"
@@ -73,7 +72,7 @@ func ApplyScopeDerivations(cfg *model.Cfg, source model.DataSourceType, scope st
 // derivations tried to write them.
 func ApplyDerivationsPinned(list []primitives.Derivation, claims map[string]any, now time.Time, pinned map[string]any, shapes primitives.Shapes) (map[string]any, error) {
 	out := make(map[string]any)
-	workingClaims := CloneNestedClaims(claims)
+	workingClaims := claimpath.Clone(claims)
 	// CLONED on every restoration, not assigned. A write lands INTO
 	// existing nested maps, so handing the pin itself to working lets the
 	// next step mutate it: a derivation changing a presented
@@ -83,7 +82,7 @@ func ApplyDerivationsPinned(list []primitives.Derivation, claims map[string]any,
 	// once is not enough; it has to be cloned each time it goes back in.
 	restore := func() {
 		for name, value := range pinned {
-			workingClaims[name] = cloneValue(value)
+			workingClaims[name] = claimpath.Clone(value)
 		}
 	}
 	restore()
@@ -138,7 +137,7 @@ func writeOutput(working *primitives.Working, workingClaims, out map[string]any,
 		return err
 	}
 	recordProvenance(generated, workingClaims, location, w.Value, isGenerated)
-	if err := working.Write(w.Path, cloneValue(w.Value)); err != nil {
+	if err := working.Write(w.Path, claimpath.Clone(w.Value)); err != nil {
 		return err
 	}
 	return recordOutput(out, workingClaims, location)
@@ -159,7 +158,7 @@ func recordOutput(out, workingClaims map[string]any, location claimpath.Pointer)
 	if !present {
 		return fmt.Errorf("output %s: the claims hold nothing at %s after the write", location, keys)
 	}
-	return claimpath.Nested().Set(out, keys, cloneValue(value))
+	return claimpath.Nested().Set(out, keys, claimpath.Clone(value))
 }
 
 // inputProvenance returns the claim a derivation reads, and whether an
@@ -226,53 +225,4 @@ func MergeNestedClaims(dst, src map[string]any) {
 		}
 		MergeNestedClaims(dm, sm)
 	}
-}
-
-// cloneValue deep-copies a claim value so nothing handed out shares
-// mutable structure with the original. Maps and slices only: everything
-// else a claim carries is immutable.
-func cloneValue(v any) any {
-	switch typed := v.(type) {
-	case map[string]any:
-		out := make(map[string]any, len(typed))
-		for key, item := range typed {
-			out[key] = cloneValue(item)
-		}
-		return out
-	case []any:
-		out := make([]any, len(typed))
-		for i, item := range typed {
-			out[i] = cloneValue(item)
-		}
-		return out
-	default:
-		return cloneSlice(v)
-	}
-}
-
-// cloneSlice deep-copies a slice of another element type, such as the
-// []string an attribute mapping writes. Any other value is returned as it
-// is.
-func cloneSlice(v any) any {
-	slice := reflect.ValueOf(v)
-	if slice.Kind() != reflect.Slice || slice.IsNil() {
-		return v
-	}
-	out := reflect.MakeSlice(slice.Type(), slice.Len(), slice.Len())
-	for i := range slice.Len() {
-		if item := cloneValue(slice.Index(i).Interface()); item != nil {
-			out.Index(i).Set(reflect.ValueOf(item))
-		}
-	}
-	return out.Interface()
-}
-
-// CloneNestedClaims returns a deep copy of src: a write into the copy,
-// through an object or into an array element, leaves src as it was.
-func CloneNestedClaims(src map[string]any) map[string]any {
-	out := make(map[string]any, len(src))
-	for k, v := range src {
-		out[k] = cloneValue(v)
-	}
-	return out
 }

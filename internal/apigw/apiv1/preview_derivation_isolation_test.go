@@ -25,7 +25,7 @@ func TestPreviewDerivationsDoNotMutateVerifiedClaims(t *testing.T) {
 		"identity": map[string]any{"given_name": "Ada"},
 	}
 
-	previewData := credential.CloneNestedClaims(verified)
+	previewData := claimpath.Clone(verified)
 
 	derived, err := credential.ApplyDerivations([]primitives.Derivation{
 		{Random: &primitives.RandomArgs{Output: claimpath.Keys("identity", "document_id")}},
@@ -54,7 +54,7 @@ func TestPreviewDerivationsDoNotMutateVerifiedClaimsForAnyPrimitive(t *testing.T
 		"identity": map[string]any{"email": "  ADA@Example.COM  "},
 	}
 
-	previewData := credential.CloneNestedClaims(verified)
+	previewData := claimpath.Clone(verified)
 
 	derived, err := credential.ApplyDerivations([]primitives.Derivation{
 		{Trim: &primitives.TrimArgs{Input: claimpath.Keys("identity", "email"), Output: claimpath.Keys("identity", "email_trimmed")}},

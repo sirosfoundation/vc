@@ -10,6 +10,7 @@ import (
 	"github.com/SUNET/vc/internal/apigw/auth_providers/oidcrp"
 	"github.com/SUNET/vc/internal/apigw/cache"
 	"github.com/SUNET/vc/internal/gen/issuer/apiv1_issuer"
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential"
 	"github.com/SUNET/vc/pkg/crypto"
 	"github.com/SUNET/vc/pkg/grpchelpers"
@@ -190,9 +191,8 @@ func (c *Client) OIDCRPCallback(ctx context.Context, req *OIDCRPCallbackRequest,
 	//
 	// Deep, not maps.Clone: MergeNestedClaims recurses into nested
 	// map[string]any, so a shallow copy shares exactly the maps it writes
-	// through. CloneNestedClaims recurses in the same places, which is what
-	// makes it deep ENOUGH rather than merely deeper.
-	policyClaims := credential.CloneNestedClaims(authResp.Claims)
+	// through. claimpath.Clone copies every object and array.
+	policyClaims := claimpath.Clone(authResp.Claims)
 
 	// Retrieve session to get credential type.
 	// ProcessCallback already validated the session, but we need it for credential type etc.
@@ -652,41 +652,10 @@ func (cc *callbackClaims) documentData() map[string]any {
 		// at signing.
 		claims = cc.c.filterClaimsByCredentialType(cc.credentialType, cc.identity)
 	}
-	return cloneClaims(claims)
-}
-
-// cloneClaims copies the map and slice spine of a claim set, so that a caller
-// mutating the copy cannot reach the original. A shallow copy is not enough:
-// an assertion default can name a nested claim, and MergeDefaults walks into
-// nested maps to set one, which would otherwise write straight into a nested
-// map the identity claims still share.
-//
-// Leaf values are not copied. Nothing here replaces a leaf in place, so
-// sharing them is safe and keeps this to the structure that is actually walked.
-func cloneClaims(claims map[string]any) map[string]any {
 	if claims == nil {
 		return nil
 	}
-	out := make(map[string]any, len(claims))
-	for name, value := range claims {
-		out[name] = cloneClaimValue(value)
-	}
-	return out
-}
-
-func cloneClaimValue(value any) any {
-	switch v := value.(type) {
-	case map[string]any:
-		return cloneClaims(v)
-	case []any:
-		out := make([]any, len(v))
-		for i, element := range v {
-			out[i] = cloneClaimValue(element)
-		}
-		return out
-	default:
-		return value
-	}
+	return claimpath.Clone(claims)
 }
 
 // buildOIDCDocument builds the document an OIDC callback stores for later

@@ -76,7 +76,7 @@ func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *
 	// A derivation targeting a nested claim would otherwise write its result
 	// into the holder's verified claims. buildPresentationDocument already
 	// clones for the same reason.
-	previewData := credential.CloneNestedClaims(verified)
+	previewData := claimpath.Clone(verified)
 	now := time.Now()
 	derived, err := credential.ApplyDerivations(pScope.Derivations, verified, now, shapes)
 	if err != nil {

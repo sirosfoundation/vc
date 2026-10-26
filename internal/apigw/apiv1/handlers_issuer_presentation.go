@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/SUNET/vc/pkg/cache"
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential"
 	"github.com/SUNET/vc/pkg/model"
 )
@@ -25,7 +26,7 @@ func (c *Client) buildPresentationDocument(scope string, pScope model.Presentati
 	// claim that the presented credential already carries (and that no
 	// derivation rewrites) still lands in the issued document. The VCTM
 	// filter below drops anything the target credential does not declare.
-	doc := credential.CloneNestedClaims(authCtx.VerifiedClaims)
+	doc := claimpath.Clone(authCtx.VerifiedClaims)
 
 	shapes, err := c.cfg.DerivationShapes(scope, pScope.FromScope)
 	if err != nil {

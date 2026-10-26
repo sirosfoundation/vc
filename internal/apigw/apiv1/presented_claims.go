@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/SUNET/vc/pkg/claimpath"
-	"github.com/SUNET/vc/pkg/credential"
 	"github.com/SUNET/vc/pkg/mdoc"
 	"github.com/SUNET/vc/pkg/model"
 
@@ -573,7 +572,7 @@ func applyPresentedDocumentClaims(docs map[string]*model.CompleteDocument, claim
 			out[k] = doc
 			continue
 		}
-		data := credential.CloneNestedClaims(doc.DocumentData)
+		data := claimpath.Clone(doc.DocumentData)
 		// REPLACED, not merged. Destinations are top-level element names
 		// (validate.go refuses a dotted one), and the configuration says
 		// the claim comes from the presentation - so merging an
@@ -610,13 +609,13 @@ func provedClaims(docData map[string]any, presented []string) map[string]any {
 	proved := make(map[string]any, len(presented))
 	for _, claim := range presented {
 		if v, ok := docData[claim]; ok {
-			// CLONED, through the package's existing deep copy.
+			// CLONED, through claimpath.Clone.
 			// MergeNestedClaims writes INTO existing nested maps, so a
 			// snapshot sharing them is changed by the very derivations it
 			// exists to survive: a derivation adding
 			// address.street_address would appear in the "proved" value
 			// too, and restoring it would restore the derived object.
-			proved[claim] = cloneClaimValue(v)
+			proved[claim] = claimpath.Clone(v)
 		}
 	}
 	return proved
