@@ -74,23 +74,22 @@ func (c *Cfg) PresentedShape(scope string) (claimpath.Shape, error) {
 	return meta.PresentedShape(), nil
 }
 
-// DerivationShapes returns the shapes the derivations of a scope read and
-// write: the credential of scope presented holds the source claims, and
-// the issued document of scope the output. Without a presented scope, the
-// issued document holds both.
-func (c *Cfg) DerivationShapes(scope, presented string) (primitives.Shapes, error) {
-	issued, err := c.DocumentShape(scope)
+// DerivationShapes returns the shapes the derivations of a source scope
+// read and write: the presented credential and the issued document for a
+// presentation source, the issued document for the others.
+func (c *Cfg) DerivationShapes(src SourceScope) (primitives.Shapes, error) {
+	issued, err := c.DocumentShape(src.Scope)
 	if err != nil {
 		return primitives.Shapes{}, err
 	}
-	if presented == "" {
+	if src.Presented == "" {
 		return primitives.Shapes{Source: issued, Issued: issued}, nil
 	}
-	source, err := c.PresentedShape(presented)
+	presented, err := c.PresentedShape(src.Presented)
 	if err != nil {
 		return primitives.Shapes{}, err
 	}
-	return primitives.Shapes{Source: source, Issued: issued}, nil
+	return primitives.Shapes{Source: presented, Issued: issued}, nil
 }
 
 func resolveDatastore(c *Cfg, ds *DataSources) error {
@@ -104,7 +103,7 @@ func resolveDatastore(c *Cfg, ds *DataSources) error {
 			}
 			entries[authScope] = entry
 		}
-		if err := c.resolveDerivations(scope, "", ds.Datastore.Scopes[scope].Derivations); err != nil {
+		if err := c.resolveDerivations(SourceScope{Source: DataSourceDatastore, Scope: scope, Derivations: ds.Datastore.Scopes[scope].Derivations}); err != nil {
 			return fmt.Errorf("%s.%w", where, err)
 		}
 	}
@@ -118,7 +117,7 @@ func resolveAssertion(c *Cfg, ds *DataSources) error {
 		if err := c.resolveDefaults(s.Defaults, scope, s.ExpiryDuration); err != nil {
 			return fmt.Errorf("%s.%w", where, err)
 		}
-		if err := c.resolveDerivations(scope, "", s.Derivations); err != nil {
+		if err := c.resolveDerivations(SourceScope{Source: DataSourceAssertion, Scope: scope, Derivations: s.Derivations}); err != nil {
 			return fmt.Errorf("%s.%w", where, err)
 		}
 	}
@@ -132,7 +131,7 @@ func resolveExternalAPI(c *Cfg, ds *DataSources) error {
 		if err := c.resolveScopeAttributeMapping(s.AttributeMapping, scope); err != nil {
 			return fmt.Errorf("%s.attribute_mapping.%w", where, err)
 		}
-		if err := c.resolveDerivations(scope, "", s.Derivations); err != nil {
+		if err := c.resolveDerivations(SourceScope{Source: DataSourceExternalAPI, Scope: scope, Derivations: s.Derivations}); err != nil {
 			return fmt.Errorf("%s.%w", where, err)
 		}
 	}
@@ -143,11 +142,10 @@ func resolvePresentation(c *Cfg, ds *DataSources) error {
 	for _, scope := range slices.Sorted(maps.Keys(ds.Presentation.Scopes)) {
 		where := fmt.Sprintf("apigw.data_sources.presentation.scopes.%s", scope)
 		s := ds.Presentation.Scopes[scope]
-		if err := c.resolveRequiredClaims(s.RequiredClaims, s.FromScope); err != nil {
-			return fmt.Errorf("%s.%w", where, err)
-		}
-		if err := c.resolveDerivations(scope, s.FromScope, s.Derivations); err != nil {
-			return fmt.Errorf("%s.%w", where, err)
+		for _, presented := range slices.Sorted(maps.Keys(s.From)) {
+			if err := c.resolvePresentedCredential(s.From[presented], scope, presented); err != nil {
+				return fmt.Errorf("%s.from.%s.%w", where, presented, err)
+			}
 		}
 		if err := c.resolveDefaults(s.Defaults, scope, s.ExpiryDuration); err != nil {
 			return fmt.Errorf("%s.%w", where, err)
@@ -226,6 +224,15 @@ func resolveDocumentClaim(claim *DocumentClaim, presented, document claimpath.Sh
 	return nil
 }
 
+// resolvePresentedCredential reads the required claims in the presented
+// credential, and the derivations from it into the issued document.
+func (c *Cfg) resolvePresentedCredential(accepted PresentedCredential, scope, presented string) error {
+	if err := c.resolveRequiredClaims(accepted.RequiredClaims, presented); err != nil {
+		return err
+	}
+	return c.resolveDerivations(SourceScope{Source: DataSourcePresentation, Scope: scope, Presented: presented, Derivations: accepted.Derivations})
+}
+
 // resolveRequiredClaims reads the required claims in the presented
 // credential. A required claim may select every element of an array.
 func (c *Cfg) resolveRequiredClaims(claims RequiredClaims, presented string) error {
@@ -273,17 +280,15 @@ func (c *Cfg) resolveDefaults(defaults ClaimDefaults, scope, expiryDuration stri
 	return nil
 }
 
-// resolveDerivations reads the claims of the derivations of scope, from
-// the credential of scope presented when that is set.
-func (c *Cfg) resolveDerivations(scope, presented string, derivations []primitives.Derivation) error {
-	if len(derivations) == 0 {
+func (c *Cfg) resolveDerivations(src SourceScope) error {
+	if len(src.Derivations) == 0 {
 		return nil
 	}
-	shapes, err := c.DerivationShapes(scope, presented)
+	shapes, err := c.DerivationShapes(src)
 	if err != nil {
 		return err
 	}
-	return primitives.ResolveDerivations(derivations, shapes)
+	return primitives.ResolveDerivations(src.Derivations, shapes)
 }
 
 // resolveScopeAttributeMapping reads the claims of an external API

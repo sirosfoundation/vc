@@ -211,7 +211,8 @@ func (s *Service) endpointSAMLACS(ctx context.Context, c *gin.Context) (any, err
 	// assertion simply does not carry a source-only input (e.g. a birthdate
 	// that only the external API returns).
 	if credSourceForDerivs.DataSource == model.DataSourceAssertion {
-		if derr := credential.ApplyScopeDerivations(s.cfg, credSourceForDerivs.DataSource, session.CredentialType, claims, time.Now()); derr != nil {
+		src := model.SourceScope{Source: credSourceForDerivs.DataSource, Scope: session.CredentialType}
+		if derr := credential.ApplyScopeDerivations(s.cfg, src, claims, time.Now()); derr != nil {
 			span.SetStatus(codes.Error, derr.Error())
 			return nil, fmt.Errorf("SAML derivations failed: %w", derr)
 		}

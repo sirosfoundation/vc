@@ -136,6 +136,9 @@ func ResolveDerivations(list []Derivation, shapes Shapes) error {
 
 // resolveArgs resolves the claims of one primitive's arguments.
 func resolveArgs(a Applier, shapes Shapes, written []claimpath.Pointer) error {
+	if hc, ok := a.(*HashCommitmentArgs); ok {
+		return hc.resolve(shapes.Source)
+	}
 	input, hasInput := pointerField(a, "Input")
 	output, hasOutput := pointerField(a, "Output")
 	inPlace := hasInput && hasOutput && output.IsZero()

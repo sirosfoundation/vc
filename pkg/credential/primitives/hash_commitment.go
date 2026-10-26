@@ -7,18 +7,18 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/SUNET/vc/pkg/base64url"
+	"github.com/SUNET/vc/pkg/claimpath"
 )
 
 // HashCommitmentArgs fulfils the to_wallet hash_commitment entry at Path.
 type HashCommitmentArgs struct {
 	// Path is the claims path pointer of the to_wallet entry it fulfils.
-	Path []string `yaml:"path" validate:"required,min=1,dive,required" doc_example:"[\"eu.europa.ec.eudi.nym_auth.1\", \"ssc\"]"`
+	Path claimpath.Pointer `yaml:"path" validate:"required" doc_example:"[\"eu.europa.ec.eudi.nym_auth.1\", \"ssc\"]"`
 	// Opening produces the opening.
 	Opening OpeningArgs `yaml:"opening" validate:"required"`
 }
@@ -41,7 +41,7 @@ type HKDFOpeningArgs struct {
 	SecretPath string `yaml:"secret_path" validate:"required" doc_example:"\"/pki/nym_auth_seed.key\""`
 	// Inputs are claims of the source data, each a non-empty string.
 	// Their order is part of the derivation.
-	Inputs []string `yaml:"inputs" validate:"required,min=1,max=16,dive,required" doc_example:"[\"issuing_country\", \"personal_administrative_number\"]"`
+	Inputs []claimpath.Pointer `yaml:"inputs" validate:"required,min=1,max=16,dive,required" doc_example:"[[\"issuing_country\"], [\"personal_administrative_number\"]]"`
 	// Bytes is the opening length.
 	Bytes int `yaml:"bytes" validate:"required" doc_example:"16"`
 }
@@ -54,33 +54,53 @@ type RandomOpeningArgs struct {
 
 // Apply implements Applier. The derivation pipeline skips hash_commitment,
 // whose opening comes from NewOpening.
-func (a *HashCommitmentArgs) Apply(map[string]any, time.Time) (map[string]any, error) {
+func (a *HashCommitmentArgs) Apply(Claims, time.Time) ([]Write, error) {
 	return nil, errors.New("hash_commitment produces its opening through NewOpening")
+}
+
+// outputs implements ownOutputs: hash_commitment writes no claim of the
+// source data.
+func (a *HashCommitmentArgs) outputs(func(string) (claimpath.Pointer, error)) ([]claimpath.Pointer, error) {
+	return nil, nil
+}
+
+// resolve reads the dotted hkdf inputs as claims of the source data.
+func (a *HashCommitmentArgs) resolve(source claimpath.Shape) error {
+	if a.Opening.HKDF == nil {
+		return nil
+	}
+	for i := range a.Opening.HKDF.Inputs {
+		if err := source.ResolveOne(&a.Opening.HKDF.Inputs[i]); err != nil {
+			return fmt.Errorf("opening.hkdf.inputs[%d]: %w", i, err)
+		}
+	}
+	return nil
 }
 
 // HashCommitmentFor returns the hash_commitment derivation of list for
 // path.
-func HashCommitmentFor(list []Derivation, path []string) *HashCommitmentArgs {
+func HashCommitmentFor(list []Derivation, path claimpath.Pointer) *HashCommitmentArgs {
 	for _, d := range list {
-		if d.HashCommitment != nil && slices.Equal(d.HashCommitment.Path, path) {
+		if d.HashCommitment != nil && d.HashCommitment.Path.Equal(path) {
 			return d.HashCommitment
 		}
 	}
 	return nil
 }
 
-// NewOpening produces the opening from the claims of the source data.
-func (a *HashCommitmentArgs) NewOpening(claims map[string]any) ([]byte, error) {
+// NewOpening produces the opening from the claims of the source data,
+// held in the source shape.
+func (a *HashCommitmentArgs) NewOpening(claims map[string]any, source claimpath.Shape) ([]byte, error) {
 	generator, err := a.Opening.generator()
 	if err != nil {
 		return nil, err
 	}
-	return generator.open(claims)
+	return generator.open(claims, source)
 }
 
 // openingGenerator produces an opening from the claims of the source data.
 type openingGenerator interface {
-	open(claims map[string]any) ([]byte, error)
+	open(claims map[string]any, source claimpath.Shape) ([]byte, error)
 }
 
 // generator returns the one generator the opening sets.
@@ -142,15 +162,15 @@ func (a *HKDFOpeningArgs) secret() ([]byte, error) {
 	return secret, nil
 }
 
-func (a *HKDFOpeningArgs) open(claims map[string]any) ([]byte, error) {
+func (a *HKDFOpeningArgs) open(claims map[string]any, source claimpath.Shape) ([]byte, error) {
 	values := make([]string, 0, len(a.Inputs))
 	for _, path := range a.Inputs {
-		val, present := lookupClaim(claims, path)
+		val, present, err := source.Get(claims, path)
 		s, ok := val.(string)
-		if !present || !ok {
+		if err != nil || !present || !ok {
 			// The value is a personal identifier, so the error names the
 			// claim only.
-			return nil, fmt.Errorf("%w: hkdf input %q must be a non-empty string", ErrInvalidClaimInput, path)
+			return nil, fmt.Errorf("%w: hkdf input %s must be a non-empty string", ErrInvalidClaimInput, path)
 		}
 		values = append(values, s)
 	}
@@ -166,12 +186,12 @@ func (a *HKDFOpeningArgs) OpenValues(values []string) ([]byte, error) {
 	info = hkdfField(info, strconv.Itoa(a.Bytes))
 	for i, value := range values {
 		if strings.TrimSpace(value) == "" {
-			return nil, fmt.Errorf("%w: hkdf input %q must be a non-empty string", ErrInvalidClaimInput, a.Inputs[i])
+			return nil, fmt.Errorf("%w: hkdf input %s must be a non-empty string", ErrInvalidClaimInput, a.Inputs[i])
 		}
 		if len(value) > maxHKDFField {
 			// A longer value would wrap its length prefix, and two inputs
 			// would then encode alike.
-			return nil, fmt.Errorf("%w: hkdf input %q is longer than %d bytes", ErrInvalidClaimInput, a.Inputs[i], maxHKDFField)
+			return nil, fmt.Errorf("%w: hkdf input %s is longer than %d bytes", ErrInvalidClaimInput, a.Inputs[i], maxHKDFField)
 		}
 		info = hkdfField(info, value)
 	}
@@ -193,7 +213,7 @@ func hkdfField(info []byte, field string) []byte {
 	return append(binary.BigEndian.AppendUint16(info, uint16(len(field))), field...)
 }
 
-func (a *RandomOpeningArgs) open(map[string]any) ([]byte, error) {
+func (a *RandomOpeningArgs) open(map[string]any, claimpath.Shape) ([]byte, error) {
 	opening := make([]byte, a.Bytes)
 	if _, err := rand.Read(opening); err != nil {
 		return nil, err

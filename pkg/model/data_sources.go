@@ -396,13 +396,12 @@ type PresentationScope struct {
 // PresentedCredential configures one credential a presentation scope
 // accepts.
 type PresentedCredential struct {
-	// RequiredClaims maps a claim path on the presented credential to an
-	// allow-list of exact-match values. Empty list = presence-only (any
-	// value passes). Populated list = the claim's value must equal one of
-	// the listed strings (or, when the claim is an array, at least one
-	// array element must match). Every key must be present on the
-	// presented credential's verified claims; missing keys fail issuance.
-	RequiredClaims map[string][]string `yaml:"required_claims" validate:"required,min=1" doc_key:"claim path"`
+	// RequiredClaims lists the claims of the presented credential that
+	// must be present, each with an optional allow-list of exact-match
+	// values, in the shape of a DCQL claims query. Every claim must be
+	// present on the presented credential's verified claims; a missing one
+	// fails issuance. The mapping form {claim: values} is read too.
+	RequiredClaims RequiredClaims `yaml:"required_claims" validate:"required,min=1,dive"`
 
 	// Derivations are generic post-verification steps that compute additional
 	// claims from the presented credential's own claims

@@ -522,8 +522,7 @@ func (c *Client) VCICredential(ctx context.Context, req *openid4vci.CredentialRe
 	if err != nil {
 		return nil, err
 	}
-	derivations, sourceClaims := c.sourceDerivations(scope, authContext, document.DocumentData)
-	documentData, toWallet, err := c.applyAuxiliaryData(ctx, scope, derivations, sourceClaims, documentData, fromWallet)
+	documentData, toWallet, err := c.issueAuxiliaryData(ctx, scope, authContext, document.DocumentData, documentData, fromWallet)
 	if err != nil {
 		c.log.Error(err, "failed to apply auxiliary data", "scope", scope)
 		return nil, err
@@ -1355,7 +1354,7 @@ func (c *Client) issueBBS(ctx context.Context, scope string, documentData []byte
 // applyDocumentDerivations runs the derivations of a document data source
 // over its document, with pinned claims.
 func (c *Client) applyDocumentDerivations(scope string, authContext *cache.AuthorizationContext, derivs []primitives.Derivation, docData, proved map[string]any) (map[string]any, error) {
-	shapes, err := c.cfg.DerivationShapes(scope, "")
+	shapes, err := c.cfg.DerivationShapes(model.SourceScope{Source: model.DataSourceType(authContext.DataSource), Scope: scope})
 	if err != nil {
 		return nil, err
 	}

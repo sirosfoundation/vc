@@ -285,15 +285,15 @@ credential configuration.
 
 Type are those of hash_commitment.
 
-| Field        | Type       | Description                                                                                                           | Example                                   | Default | Required |
-| ------------ | ---------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ------- | -------- |
-| `type`       | `string`   | Auxiliary Data Type.                                                                                                  | `"hash_commitment"`                       | -       | No       |
-| `alg`        | `string`   | Hash function of a hash_commitment.                                                                                   | `"sha-256"`                               | -       | No       |
-| `path`       | `[]string` | Claims path pointer of the claim that holds the commitment.                                                           | `["eu.europa.ec.eudi.nym_auth.1", "ssc"]` | -       | No       |
-| `opening`    | `string`   | Base64url secret, in an entry the Credential Issuer sends. It is a Secret Value.                                      | -                                         | -       | No       |
-| `commitment` | `string`   | Base64url commitment, in an entry the Wallet sends.                                                                   | -                                         | -       | No       |
-| `required`   | `bool`     | Required, in a to_issuer entry of metadata, means the Wallet must send it.                                            | -                                         | -       | No       |
-| `encoding`   | `string`   | How the claim at Path represents the commitment, in metadata: base64url, base64 or hex text, or the bytes when empty. | `"base64url"`                             | -       | No       |
+| Field        | Type                  | Description                                                                                                           | Example                                   | Default | Required |
+| ------------ | --------------------- | --------------------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ------- | -------- |
+| `type`       | `string`              | Auxiliary Data Type.                                                                                                  | `"hash_commitment"`                       | -       | No       |
+| `alg`        | `string`              | Hash function of a hash_commitment.                                                                                   | `"sha-256"`                               | -       | No       |
+| `path`       | `claims path pointer` | Claims path pointer of the claim that holds the commitment.                                                           | `["eu.europa.ec.eudi.nym_auth.1", "ssc"]` | -       | No       |
+| `opening`    | `string`              | Base64url secret, in an entry the Credential Issuer sends. It is a Secret Value.                                      | -                                         | -       | No       |
+| `commitment` | `string`              | Base64url commitment, in an entry the Wallet sends.                                                                   | -                                         | -       | No       |
+| `required`   | `bool`                | Required, in a to_issuer entry of metadata, means the Wallet must send it.                                            | -                                         | -       | No       |
+| `encoding`   | `string`              | How the claim at Path represents the commitment, in metadata: base64url, base64 or hex text, or the bytes when empty. | `"base64url"`                             | -       | No       |
 
 ### `disclosure_policy`
 
@@ -775,18 +775,18 @@ an enforced one.
 
 > **Path:** `.apigw.data_sources.datastore.scopes.<credential scope>.derivations[].copy`, `.apigw.data_sources.assertion.scopes.<credential scope>.derivations[].copy`, `.apigw.data_sources.external_api.scopes.<credential scope>.derivations[].copy`, `.apigw.data_sources.presentation.scopes.<credential scope>.from.<presented credential scope>.derivations[].copy`, `<scope>.derivations[].copy`
 
-| Field   | Type     | Description                                                                                                             | Example     | Default | Required |
-| ------- | -------- | ----------------------------------------------------------------------------------------------------------------------- | ----------- | ------- | -------- |
-| `input` | `string` | Source claim path. Supports dot-notation claim paths and literal dotted keys, such as a namespace-qualified mdoc claim. | `birthdate` | -       | Yes      |
+| Field   | Type                  | Description   | Example         | Default | Required |
+| ------- | --------------------- | ------------- | --------------- | ------- | -------- |
+| `input` | `claims path pointer` | Source claim. | `["birthdate"]` | -       | Yes      |
 
 ### `hash_commitment`
 
 > **Path:** `.apigw.data_sources.datastore.scopes.<credential scope>.derivations[].hash_commitment`, `.apigw.data_sources.assertion.scopes.<credential scope>.derivations[].hash_commitment`, `.apigw.data_sources.external_api.scopes.<credential scope>.derivations[].hash_commitment`, `.apigw.data_sources.presentation.scopes.<credential scope>.from.<presented credential scope>.derivations[].hash_commitment`, `<scope>.derivations[].hash_commitment`
 
-| Field     | Type       | Description                                            | Example                                   | Default | Required |
-| --------- | ---------- | ------------------------------------------------------ | ----------------------------------------- | ------- | -------- |
-| `path`    | `[]string` | Claims path pointer of the to_wallet entry it fulfils. | `["eu.europa.ec.eudi.nym_auth.1", "ssc"]` | -       | Yes      |
-| `opening` | `object`   | Opening produces the opening.                          | -                                         | -       | Yes      |
+| Field     | Type                  | Description                                            | Example                                   | Default | Required |
+| --------- | --------------------- | ------------------------------------------------------ | ----------------------------------------- | ------- | -------- |
+| `path`    | `claims path pointer` | Claims path pointer of the to_wallet entry it fulfils. | `["eu.europa.ec.eudi.nym_auth.1", "ssc"]` | -       | Yes      |
+| `opening` | `object`              | Opening produces the opening.                          | -                                         | -       | Yes      |
 
 ### `opening`
 
@@ -805,11 +805,11 @@ is set.
 
 input claims.
 
-| Field         | Type       | Description                                                                                | Example                                                 | Default | Required |
-| ------------- | ---------- | ------------------------------------------------------------------------------------------ | ------------------------------------------------------- | ------- | -------- |
-| `secret_path` | `string`   | File holding the secret, base64url, decoding to at least 32 bytes.                         | `"/pki/nym_auth_seed.key"`                              | -       | Yes      |
-| `inputs`      | `[]string` | Claims of the source data, each a non-empty string. Their order is part of the derivation. | `["issuing_country", "personal_administrative_number"]` | -       | Yes      |
-| `bytes`       | `int`      | Opening length.                                                                            | `16`                                                    | -       | Yes      |
+| Field         | Type                    | Description                                                                                | Example                                                     | Default | Required |
+| ------------- | ----------------------- | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------- | ------- | -------- |
+| `secret_path` | `string`                | File holding the secret, base64url, decoding to at least 32 bytes.                         | `"/pki/nym_auth_seed.key"`                                  | -       | Yes      |
+| `inputs`      | `[]claims path pointer` | Claims of the source data, each a non-empty string. Their order is part of the derivation. | `[["issuing_country"], ["personal_administrative_number"]]` | -       | Yes      |
+| `bytes`       | `int`                   | Opening length.                                                                            | `16`                                                        | -       | Yes      |
 
 ### `random`
 
@@ -917,7 +917,7 @@ another credential presented by the wallet via OpenID4VP during OpenID4VCI.
 | ----------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- | ----------- | -------- |
 | `from`            | `object` | The credentials the wallet may present, keyed by their credential scope (e.g. "eduid"). The wallet presents one of them. The presented credential is verified against the issuer trust chain before its claims are consumed. | -         | -           | Yes      |
 | `auth_provider`   | `string` | Fixed to "openid4vp" for now; kept as a field for symmetry with the other data sources and so future providers can be added without a config-shape change.                                                                   | -         | `openid4vp` | No       |
-| `defaults`        | `object` | Claim values injected into the derived credential document for fields the presented credential does not carry (e.g. issuing_authority, issuing_country).                                                                     | -         | -           | No       |
+| `defaults`        | `array`  | Claim values injected into the derived credential document for fields the presented credential does not carry (e.g. issuing_authority, issuing_country). The mapping form {claim: value} is read too.                        | -         | -           | No       |
 | `expiry_duration` | `string` | ExpiryDuration, if set, computes date_of_expiry at issuance time as now+duration (formatted as ISO YYYY-MM-DD). Same semantics as AssertionScope.ExpiryDuration.                                                             | `"8760h"` | -           | No       |
 
 ### `from` entry
@@ -926,10 +926,19 @@ another credential presented by the wallet via OpenID4VP during OpenID4VCI.
 
 accepts.
 
-| Field             | Type     | Description                                                                                                                                                                                                                                                                                                                                                                           | Example | Default | Required |
-| ----------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- | -------- |
-| `required_claims` | `object` | A claim path on the presented credential to an allow-list of exact-match values. Empty list = presence-only (any value passes). Populated list = the claim's value must equal one of the listed strings (or, when the claim is an array, at least one array element must match). Every key must be present on the presented credential's verified claims; missing keys fail issuance. | -       | -       | Yes      |
-| `derivations`     | `array`  | Generic post-verification steps that compute additional claims from the presented credential's own claims (see credential.ApplyDerivations).                                                                                                                                                                                                                                          | -       | -       | No       |
+| Field             | Type    | Description                                                                                                                                                                                                                                                                                                      | Example | Default | Required |
+| ----------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- | ------- | -------- |
+| `required_claims` | `array` | The claims of the presented credential that must be present, each with an optional allow-list of exact-match values, in the shape of a DCQL claims query. Every claim must be present on the presented credential's verified claims; a missing one fails issuance. The mapping form {claim: values} is read too. | -       | -       | Yes      |
+| `derivations`     | `array` | Generic post-verification steps that compute additional claims from the presented credential's own claims (see credential.ApplyDerivations).                                                                                                                                                                     | -       | -       | No       |
+
+### `required_claims` entry
+
+> **Path:** `.apigw.data_sources.presentation.scopes.<credential scope>.from.<presented credential scope>.required_claims[]`
+
+| Field    | Type                  | Description                                                                                                                                                                                | Example                 | Default | Required |
+| -------- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------- | ------- | -------- |
+| `path`   | `claims path pointer` | Claim. A null selects every element of an array the holder disclosed, and the claim is present when it selects one. An index counts the elements as issued, the undisclosed ones included. | `[nationalities, null]` | -       | Yes      |
+| `values` | `[]string`            | Allow-list: empty lets any value pass. Otherwise a selected value must equal one of the listed strings, or, for an array, one of its elements must.                                        | `[SE, NO]`              | -       | No       |
 
 ### `auth_providers`
 
@@ -2424,9 +2433,9 @@ Random writes a freshly generated random value to a claim the source data did no
 
 Copy writes an input claim's value, of any type, under another claim name.
 
-| Field   | Type     | Description                                                                                                             | Example     | Default | Required |
-| ------- | -------- | ----------------------------------------------------------------------------------------------------------------------- | ----------- | ------- | -------- |
-| `input` | `string` | Source claim path. Supports dot-notation claim paths and literal dotted keys, such as a namespace-qualified mdoc claim. | `birthdate` | -       | Yes      |
+| Field   | Type                  | Description   | Example         | Default | Required |
+| ------- | --------------------- | ------------- | --------------- | ------- | -------- |
+| `input` | `claims path pointer` | Source claim. | `["birthdate"]` | -       | Yes      |
 
 ### hash_commitment
 
@@ -2434,8 +2443,8 @@ Copy writes an input claim's value, of any type, under another claim name.
 
 HashCommitment fulfils a to_wallet hash_commitment entry of the credential's auxiliary_data.
 
-| Field     | Type       | Description                                            | Example                                   | Default | Required |
-| --------- | ---------- | ------------------------------------------------------ | ----------------------------------------- | ------- | -------- |
-| `path`    | `[]string` | Claims path pointer of the to_wallet entry it fulfils. | `["eu.europa.ec.eudi.nym_auth.1", "ssc"]` | -       | Yes      |
-| `opening` | `object`   | Opening produces the opening.                          | -                                         | -       | Yes      |
+| Field     | Type                  | Description                                            | Example                                   | Default | Required |
+| --------- | --------------------- | ------------------------------------------------------ | ----------------------------------------- | ------- | -------- |
+| `path`    | `claims path pointer` | Claims path pointer of the to_wallet entry it fulfils. | `["eu.europa.ec.eudi.nym_auth.1", "ssc"]` | -       | Yes      |
+| `opening` | `object`              | Opening produces the opening.                          | -                                         | -       | Yes      |
 

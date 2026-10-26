@@ -244,7 +244,8 @@ func (c *Client) OIDCRPCallback(ctx context.Context, req *OIDCRPCallbackRequest,
 	// IdP identity simply does not carry a source-only input (e.g. a
 	// birthdate that only the external API returns).
 	if credSourceForDerivs.DataSource == model.DataSourceAssertion {
-		if derr := credential.ApplyScopeDerivations(c.cfg, credSourceForDerivs.DataSource, session.CredentialType, cc.identity, time.Now()); derr != nil {
+		src := model.SourceScope{Source: credSourceForDerivs.DataSource, Scope: session.CredentialType}
+		if derr := credential.ApplyScopeDerivations(c.cfg, src, cc.identity, time.Now()); derr != nil {
 			span.SetStatus(codes.Error, derr.Error())
 			return nil, fmt.Errorf("OIDC derivations failed: %w", derr)
 		}

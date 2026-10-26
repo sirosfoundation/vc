@@ -34,7 +34,7 @@ import (
 // the two into different HTTP answers, and telling a wallet its
 // presentation was rejected when the datastore was down invites a retry
 // that cannot succeed.
-func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *cache.AuthorizationContext, pScope model.PresentationScope, presentedScope string, presented map[string]any) error {
+func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *cache.AuthorizationContext, scope string, pScope model.PresentationScope, presentedScope string, presented map[string]any) error {
 	accepted, ok := pScope.From[presentedScope]
 	if !ok {
 		return helpers.NewErrorDetailsWithStatus("presentation_scope_mismatch",
@@ -49,15 +49,18 @@ func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *
 		return err
 	}
 
-	// Format of presentedScope decides what counts as a valid claim
-	// shape. SD-JWT VC nests dotted paths under real objects, so a literal
-	// top-level "identity.birthdate" key must NOT satisfy the required
-	// nested path "identity.birthdate" — otherwise a wallet could smuggle
-	// a flat key in and have it accepted. mdoc keeps the opposite
-	// convention: namespace-qualified claims live as one literal dotted
-	// key (e.g. "org.iso.18013.5.1.birth_date"), so literal lookup is the
-	// only one that works.
-	verified, err := verifiedClaims(c.cfg.GetFormatForScope(presentedScope), presented, accepted.RequiredClaims)
+	// The format of presentedScope decides the shape the claims are read
+	// in. SD-JWT VC nests a path under real objects, so a literal
+	// top-level "identity.birthdate" key does NOT satisfy the required
+	// path ["identity", "birthdate"] — otherwise a wallet could smuggle a
+	// flat key in and have it accepted. mdoc keeps the opposite
+	// convention: namespace-qualified claims live as one literal key
+	// (e.g. "org.iso.18013.5.1.birth_date").
+	shapes, err := c.cfg.DerivationShapes(model.SourceScope{Source: model.DataSourcePresentation, Scope: scope, Presented: presentedScope})
+	if err != nil {
+		return serverFault(err)
+	}
+	verified, err := verifiedClaims(shapes.Source, presented, accepted.RequiredClaims)
 	if err != nil {
 		return err
 	}
@@ -83,7 +86,7 @@ func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *
 	// its document the same way.
 	previewData := shapes.Source.Processed(verified)
 	now := time.Now()
-	derived, err := credential.ApplyDerivations(accepted.Derivations, verified, now)
+	derived, err := credential.ApplyDerivations(accepted.Derivations, verified, now, shapes)
 	if err != nil {
 		// Not every derivation failure is ours. A scope deriving age from
 		// a required birthdate gets whatever the credential carried, and a
@@ -122,49 +125,14 @@ func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *
 // (documentValue): a CBOR-decoded value, such as an mdoc full-date's tag
 // 1004, would come back from the Mongo-backed auth context store as a
 // BSON document.
-func verifiedClaims(sourceFormat string, presented map[string]any, required map[string][]string) (map[string]any, error) {
+func verifiedClaims(shape claimpath.Shape, presented map[string]any, required model.RequiredClaims) (map[string]any, error) {
 	verified := make(map[string]any, len(required))
-	for claim, allowed := range required {
-		val, present := lookupClaimPath(sourceFormat, presented, claim)
-		if !present {
-			return nil, helpers.NewErrorDetailsWithStatus("missing_required_claim",
-				fmt.Sprintf("claim %q not present on presented credential", claim),
-				400)
+	for _, claim := range required {
+		if err := verifyRequiredClaim(shape, presented, claim); err != nil {
+			return nil, err
 		}
-		if len(allowed) > 0 && !claimValueMatches(val, allowed) {
-			return nil, helpers.NewErrorDetailsWithStatus("claim_value_not_allowed",
-				fmt.Sprintf("claim %q value not in allow-list", claim),
-				403)
-		}
-		stored, err := documentValue(val)
-		if err != nil {
-			return nil, helpers.NewErrorDetailsWithStatus("claim_value_not_representable",
-				fmt.Sprintf("claim %q: %v", claim, err),
-				400)
-		}
-		// Materialise dotted claim paths as nested map structures so the
-		// downstream VCTM filter (which walks nested maps) can see them
-		// under the same shape the presented credential used. mdoc keeps
-		// its namespace-qualified literal key; SD-JWT always nests.
-		setClaimPath(sourceFormat, verified, presented, claim, stored)
-	}
-	return verified, nil
-}
-
-// lookupClaimPath resolves a claim path against a nested claims map in a
-// format-aware way. For mdoc formats (plain or ZK) a literal-key match is
-// tried first so namespace-qualified keys stored as one flat
-// "org.iso.18013.5.1.birth_date" entry resolve to their value, then the
-// path falls back to splitting on "." and walking nested maps. For
-// SD-JWT VC the literal fallback is intentionally skipped so a flat
-// "identity.birthdate" key on the presented credential cannot satisfy a
-// nested path "identity.birthdate" the scope required. Returns the value
-// and true when the path resolves; false when any intermediate segment is
-// missing or is not a map.
-func lookupClaimPath(sourceFormat string, claims map[string]any, path string) (any, bool) {
-	if isMDocLikeFormat(sourceFormat) {
-		if v, ok := claims[path]; ok {
-			return v, true
+		if err := copyPresentedClaim(shape, verified, presented, claim.Path); err != nil {
+			return nil, err
 		}
 	}
 	return verified, nil
@@ -191,22 +159,31 @@ func verifyRequiredClaim(shape claimpath.Shape, presented map[string]any, claim 
 }
 
 // copyPresentedClaim copies the claim at path, up to its first null or
-// index, from presented into verified, in the same shape. The downstream
-// VCTM filter (which walks nested maps) then sees it under the shape the
-// presented credential used, and a claim's array keeps its positions, the
-// undisclosed elements included (claimpath.Shape.Copy).
+// index, from presented into verified, in the same shape and in the form
+// the issued document carries. The downstream VCTM filter (which walks
+// nested maps) then sees it under the shape the presented credential used,
+// and a claim's array keeps its positions, the undisclosed elements
+// included (claimpath.Shape.Copy).
 func copyPresentedClaim(shape claimpath.Shape, verified, presented map[string]any, path claimpath.Pointer) error {
 	keys, ok := path.KeyPrefix()
 	if !ok {
-		return fmt.Errorf("claim %s starts with no key", path)
+		return serverFault(fmt.Errorf("claim %s starts with no key", path))
 	}
-	present, err := shape.Copy(verified, presented, keys)
+	copied := map[string]any{}
+	present, err := shape.Copy(copied, presented, keys)
 	if err != nil {
-		return fmt.Errorf("claim %s: %w", path, err)
+		return serverFault(fmt.Errorf("claim %s: %w", path, err))
 	}
 	if !present {
-		return fmt.Errorf("claim %s: the presentation holds no claim at %s", path, keys)
+		return serverFault(fmt.Errorf("claim %s: the presentation holds no claim at %s", path, keys))
 	}
+	stored, err := documentObject(copied)
+	if err != nil {
+		return helpers.NewErrorDetailsWithStatus("claim_value_not_representable",
+			fmt.Sprintf("claim %s: %v", keys, err),
+			400)
+	}
+	credential.MergeNestedClaims(verified, stored)
 	return nil
 }
 

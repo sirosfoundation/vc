@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential/primitives"
 	"github.com/SUNET/vc/pkg/mdoc"
 	"github.com/SUNET/vc/pkg/model"
@@ -25,7 +26,8 @@ import (
 func TestCheckAuxiliaryData(t *testing.T) {
 	secretPath := filepath.Join(t.TempDir(), "seed.key")
 	require.NoError(t, os.WriteFile(secretPath, []byte(base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("s", 32)))), 0o600))
-	ssc := []string{"eu.europa.ec.eudi.nym_auth.1", "ssc"}
+	const ns = "eu.europa.ec.eudi.nym_auth.1"
+	ssc := claimpath.Keys(ns, "ssc")
 	encryption := model.CredentialEncryption{Keys: []model.CredentialEncryptionKey{{PrivateKeyPath: p256KeyPath(t)}}}
 
 	base := func() *model.Cfg {
@@ -49,7 +51,7 @@ func TestCheckAuxiliaryData(t *testing.T) {
 						"pid": {Derivations: []primitives.Derivation{{HashCommitment: &primitives.HashCommitmentArgs{
 							Path: ssc,
 							Opening: primitives.OpeningArgs{HKDF: &primitives.HKDFOpeningArgs{
-								SecretPath: secretPath, Inputs: []string{"personal_administrative_number"}, Bytes: 16,
+								SecretPath: secretPath, Inputs: []claimpath.Pointer{claimpath.Keys("personal_administrative_number")}, Bytes: 16,
 							}},
 						}}}},
 					}}},
@@ -68,17 +70,17 @@ func TestCheckAuxiliaryData(t *testing.T) {
 
 	t.Run("a tstr element holds an encoded commitment", func(t *testing.T) {
 		cfg := base()
-		cfg.Common.CredentialMetadata["nym_auth"].MDDL.Claims[ssc[0]]["text"] = mdoc.ClaimMetadata{ValueType: "tstr"}
-		entry(cfg).Path, entry(cfg).Encoding = []string{ssc[0], "text"}, "hex"
-		derivation(cfg).Path = []string{ssc[0], "text"}
+		cfg.Common.CredentialMetadata["nym_auth"].MDDL.Claims[ns]["text"] = mdoc.ClaimMetadata{ValueType: "tstr"}
+		entry(cfg).Path, entry(cfg).Encoding = claimpath.Keys(ns, "text"), "hex"
+		derivation(cfg).Path = claimpath.Keys(ns, "text")
 		require.NoError(t, checkAuxiliaryData(cfg, "apigw"))
 	})
 
 	t.Run("required comes from mandatory", func(t *testing.T) {
 		cfg := base()
 		cfg.Common.CredentialMetadata["nym_auth"].AuxiliaryData.ToIssuer = []openid4vci.AuxiliaryDataEntry{
-			{Type: "hash_commitment", Alg: "sha-256", Path: []string{ssc[0], "psc"}},
-			{Type: "hash_commitment", Alg: "sha-256", Path: []string{ssc[0], "opt"}},
+			{Type: "hash_commitment", Alg: "sha-256", Path: claimpath.Keys(ns, "psc")},
+			{Type: "hash_commitment", Alg: "sha-256", Path: claimpath.Keys(ns, "opt")},
 		}
 		require.NoError(t, checkAuxiliaryData(cfg, "apigw"))
 		deriveAuxiliaryDataRequired(cfg)
@@ -94,11 +96,11 @@ func TestCheckAuxiliaryData(t *testing.T) {
 		"an unknown type":               {func(c *model.Cfg) { entry(c).Type = "x" }, `type "x"`},
 		"an unknown alg":                {func(c *model.Cfg) { entry(c).Alg = "sha-512" }, `alg "sha-512"`},
 		"an opening in config":          {func(c *model.Cfg) { entry(c).Opening = "AA" }, "carries no opening"},
-		"a non-bstr element":            {func(c *model.Cfg) { entry(c).Path = []string{ssc[0], "birth_date"} }, "full-date element"},
-		"an undeclared path":            {func(c *model.Cfg) { entry(c).Path = []string{ssc[0], "nope"} }, "declares no element"},
+		"a non-bstr element":            {func(c *model.Cfg) { entry(c).Path = claimpath.Keys(ns, "birth_date") }, "full-date element"},
+		"an undeclared path":            {func(c *model.Cfg) { entry(c).Path = claimpath.Keys(ns, "nope") }, "declares no element"},
 		"an encoding on a bstr element": {func(c *model.Cfg) { entry(c).Encoding = "hex" }, "a commitment in hex text needs a tstr element"},
 		"required set in config": {func(c *model.Cfg) {
-			c.Common.CredentialMetadata["nym_auth"].AuxiliaryData.ToIssuer = []openid4vci.AuxiliaryDataEntry{{Type: "hash_commitment", Alg: "sha-256", Path: []string{ssc[0], "psc"}, Required: true}}
+			c.Common.CredentialMetadata["nym_auth"].AuxiliaryData.ToIssuer = []openid4vci.AuxiliaryDataEntry{{Type: "hash_commitment", Alg: "sha-256", Path: claimpath.Keys(ns, "psc"), Required: true}}
 		}, "comes from the type metadata"},
 		"an unfulfilled to_wallet entry": {func(c *model.Cfg) {
 			c.APIGW.DataSources.Presentation.Scopes["nym_auth"].From["pid"] = model.PresentedCredential{}
@@ -107,7 +109,7 @@ func TestCheckAuxiliaryData(t *testing.T) {
 			c.APIGW.IssuerMetadata.CredentialEncryption = model.CredentialEncryption{}
 		}, "needs a key under apigw.issuer_metadata.credential_encryption.keys"},
 		"a derivation for a path outside to_wallet": {func(c *model.Cfg) {
-			derivation(c).Path = []string{ssc[0], "birth_date"}
+			derivation(c).Path = claimpath.Keys(ns, "birth_date")
 		}, "is no to_wallet entry"},
 		"an unreadable secret": {func(c *model.Cfg) {
 			derivation(c).Opening.HKDF.SecretPath = filepath.Join(t.TempDir(), "absent")
@@ -135,14 +137,10 @@ func TestCheckAuxiliaryData(t *testing.T) {
 func TestCheckAuxiliaryDataSDJWT(t *testing.T) {
 	secretPath := filepath.Join(t.TempDir(), "seed.key")
 	require.NoError(t, os.WriteFile(secretPath, []byte(base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("s", 32)))), 0o600))
-	ssc, psc := []string{"commitments", "ssc"}, []string{"commitments", "psc"}
+	ssc, psc := claimpath.Keys("commitments", "ssc"), claimpath.Keys("commitments", "psc")
 	encryption := model.CredentialEncryption{Keys: []model.CredentialEncryptionKey{{PrivateKeyPath: p256KeyPath(t)}}}
-	claim := func(sd string, mandatory bool, path ...string) sdjwtvc.Claim {
-		segments := make([]*string, len(path))
-		for i := range path {
-			segments[i] = &path[i]
-		}
-		return sdjwtvc.Claim{Path: segments, SD: sd, Mandatory: mandatory}
+	claim := func(sd string, mandatory bool, path claimpath.Pointer) sdjwtvc.Claim {
+		return sdjwtvc.Claim{Path: path, SD: sd, Mandatory: mandatory}
 	}
 
 	base := func() *model.Cfg {
@@ -150,7 +148,7 @@ func TestCheckAuxiliaryDataSDJWT(t *testing.T) {
 			Common: &model.Common{CredentialMetadata: map[string]*model.CredentialMetadata{"example": {
 				Format: "dc+sd-jwt",
 				VCTM: &sdjwtvc.VCTM{VCT: "https://example.org/example", Claims: []sdjwtvc.Claim{
-					claim("always", false, ssc...), claim("always", true, psc...), claim("", false, "given_name"),
+					claim("always", false, ssc), claim("always", true, psc), claim("", false, claimpath.Keys("given_name")),
 				}},
 				AuxiliaryData: &openid4vci.AuxiliaryDataSupported{
 					ToWallet: []openid4vci.AuxiliaryDataEntry{{Type: "hash_commitment", Alg: "sha-256", Path: ssc, Encoding: "base64url"}},
@@ -164,7 +162,7 @@ func TestCheckAuxiliaryDataSDJWT(t *testing.T) {
 						"pid": {Derivations: []primitives.Derivation{{HashCommitment: &primitives.HashCommitmentArgs{
 							Path: ssc,
 							Opening: primitives.OpeningArgs{HKDF: &primitives.HKDFOpeningArgs{
-								SecretPath: secretPath, Inputs: []string{"personal_administrative_number"}, Bytes: 16,
+								SecretPath: secretPath, Inputs: []claimpath.Pointer{claimpath.Keys("personal_administrative_number")}, Bytes: 16,
 							}},
 						}}}},
 					}}},
@@ -184,22 +182,22 @@ func TestCheckAuxiliaryDataSDJWT(t *testing.T) {
 		want   string
 	}{
 		"a path the VCTM does not declare": {func(c *model.Cfg) {
-			meta(c).AuxiliaryData.ToIssuer[0].Path = []string{"commitments", "other"}
+			meta(c).AuxiliaryData.ToIssuer[0].Path = claimpath.Keys("commitments", "other")
 		}, "the VCTM declares no claim"},
 		"an empty path": {func(c *model.Cfg) {
-			meta(c).AuxiliaryData.ToIssuer[0].Path = nil
+			meta(c).AuxiliaryData.ToIssuer[0].Path = claimpath.Pointer{}
 		}, "the path is empty"},
 		"a claim the holder cannot withhold": {func(c *model.Cfg) {
 			meta(c).VCTM.Claims[1].SD = "allowed"
 		}, `needs sd "always"`},
 		"a claim declared beneath the commitment": {func(c *model.Cfg) {
-			meta(c).VCTM.Claims = append(meta(c).VCTM.Claims, claim("always", false, "commitments", "psc", "x"))
+			meta(c).VCTM.Claims = append(meta(c).VCTM.Claims, claim("always", false, claimpath.Keys("commitments", "psc", "x")))
 		}, "declares a claim beneath"},
 		"a claim the builder writes": {func(c *model.Cfg) {
-			meta(c).AuxiliaryData.ToIssuer[0].Path = []string{"cnf"}
+			meta(c).AuxiliaryData.ToIssuer[0].Path = claimpath.Keys("cnf")
 		}, `the SD-JWT builder writes "cnf"`},
 		"a disclosure member": {func(c *model.Cfg) {
-			meta(c).AuxiliaryData.ToIssuer[0].Path = []string{"commitments", "_sd"}
+			meta(c).AuxiliaryData.ToIssuer[0].Path = claimpath.Keys("commitments", "_sd")
 		}, `"_sd" names no claim`},
 		"a format without a commitment carrier": {func(c *model.Cfg) {
 			meta(c).Format = "ldp_vc"

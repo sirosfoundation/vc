@@ -2462,8 +2462,8 @@ func (c *Cfg) LookupCredentialSources(scope string) ([]CredentialSource, error) 
 // GetOpenID4VPAuth returns the OpenID4VP authentication config for a credential type, or nil if not found.
 // For a datastore scope with auth_provider=openid4vp, returns its AuthScopes as-is.
 // For a presentation scope, synthesises one AuthScopes entry per credential in
-// the scope's from: the wallet must present one of them, disclosing every key
-// of its RequiredClaims.
+// the scope's from: the wallet must present one of them, disclosing every
+// claim of its RequiredClaims.
 func (c *Cfg) GetOpenID4VPAuth(scope string) *OpenID4VPCredentialAuth {
 	if c.APIGW == nil {
 		return nil
@@ -2481,12 +2481,7 @@ func (c *Cfg) GetOpenID4VPAuth(scope string) *OpenID4VPCredentialAuth {
 		}
 		authScopes := make(map[string]AuthScopeEntry, len(cred.From))
 		for presented, accepted := range cred.From {
-			claims := make([]string, 0, len(accepted.RequiredClaims))
-			for k := range accepted.RequiredClaims {
-				claims = append(claims, k)
-			}
-			sort.Strings(claims)
-			authScopes[presented] = AuthScopeEntry{AuthClaims: claims}
+			authScopes[presented] = AuthScopeEntry{AuthClaims: accepted.RequiredClaims.Paths()}
 		}
 		return &OpenID4VPCredentialAuth{AuthScopes: authScopes}
 	}

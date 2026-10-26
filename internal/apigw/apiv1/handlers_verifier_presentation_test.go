@@ -139,15 +139,12 @@ func TestFinalisePresentationVerification_Success(t *testing.T) {
 
 	pScope := model.PresentationScope{
 		From: map[string]model.PresentedCredential{"eduid": {
-			RequiredClaims: map[string][]string{
-				"birthdate": nil,
-				"assurance_level": {
-					"http://www.swamid.se/policy/assurance/al3",
-				},
-			},
+			RequiredClaims: model.RequiredClaims{{Path: claimpath.Keys("birthdate")}, {Path: claimpath.Keys("assurance_level"), Values: []string{
+				"http://www.swamid.se/policy/assurance/al3",
+			}}},
 			Derivations: []primitives.Derivation{
 				{AgeOverThresholds: &primitives.AgeOverThresholdsArgs{
-					Input: "birthdate", Thresholds: []int{18},
+					Input: claimpath.Keys("birthdate"), Thresholds: []int{18},
 				}},
 			},
 		}},
@@ -159,7 +156,7 @@ func TestFinalisePresentationVerification_Success(t *testing.T) {
 		"assurance_level": "http://www.swamid.se/policy/assurance/al3",
 	}
 
-	require.NoError(t, c.finalisePresentationVerification(t.Context(), authCtx, pScope, "eduid", presented))
+	require.NoError(t, c.finalisePresentationVerification(t.Context(), authCtx, "eduid_age", pScope, "eduid", presented))
 
 	assert.Equal(t, "1990-01-15", authCtx.VerifiedClaims["birthdate"])
 	assert.Equal(t, "http://www.swamid.se/policy/assurance/al3", authCtx.VerifiedClaims["assurance_level"])
@@ -185,10 +182,7 @@ func TestFinalisePresentationVerification_MissingRequiredClaim(t *testing.T) {
 
 	pScope := model.PresentationScope{
 		From: map[string]model.PresentedCredential{"eduid": {
-			RequiredClaims: map[string][]string{
-				"birthdate":       nil,
-				"assurance_level": nil,
-			},
+			RequiredClaims: model.RequiredClaims{{Path: claimpath.Keys("birthdate")}, {Path: claimpath.Keys("assurance_level")}},
 		}},
 	}
 	presented := map[string]any{
@@ -196,7 +190,7 @@ func TestFinalisePresentationVerification_MissingRequiredClaim(t *testing.T) {
 		"birthdate": "1990-01-15",
 	}
 
-	err := c.finalisePresentationVerification(t.Context(), authCtx, pScope, "eduid", presented)
+	err := c.finalisePresentationVerification(t.Context(), authCtx, "eduid_age", pScope, "eduid", presented)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "assurance_level")
 	assert.Contains(t, err.Error(), "not present")
@@ -213,11 +207,9 @@ func TestFinalisePresentationVerification_ScalarAllowList(t *testing.T) {
 
 	pScope := model.PresentationScope{
 		From: map[string]model.PresentedCredential{"eduid": {
-			RequiredClaims: map[string][]string{
-				"assurance_level": {
-					"http://www.swamid.se/policy/assurance/al3",
-				},
-			},
+			RequiredClaims: model.RequiredClaims{{Path: claimpath.Keys("assurance_level"), Values: []string{
+				"http://www.swamid.se/policy/assurance/al3",
+			}}},
 		}},
 	}
 	presented := map[string]any{
@@ -225,7 +217,7 @@ func TestFinalisePresentationVerification_ScalarAllowList(t *testing.T) {
 		"assurance_level": "http://www.swamid.se/policy/assurance/al1",
 	}
 
-	err := c.finalisePresentationVerification(t.Context(), authCtx, pScope, "eduid", presented)
+	err := c.finalisePresentationVerification(t.Context(), authCtx, "eduid_age", pScope, "eduid", presented)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not in allow-list")
 	assert.Nil(t, authCtx.VerifiedClaims)
@@ -240,11 +232,9 @@ func TestFinalisePresentationVerification_ArrayAllowList(t *testing.T) {
 
 	pScope := model.PresentationScope{
 		From: map[string]model.PresentedCredential{"eduid": {
-			RequiredClaims: map[string][]string{
-				"assurance_level": {
-					"http://www.swamid.se/policy/assurance/al3",
-				},
-			},
+			RequiredClaims: model.RequiredClaims{{Path: claimpath.Keys("assurance_level"), Values: []string{
+				"http://www.swamid.se/policy/assurance/al3",
+			}}},
 		}},
 	}
 	presentedOK := map[string]any{
@@ -254,7 +244,7 @@ func TestFinalisePresentationVerification_ArrayAllowList(t *testing.T) {
 			"http://www.swamid.se/policy/assurance/al3",
 		},
 	}
-	require.NoError(t, c.finalisePresentationVerification(t.Context(), authCtx, pScope, "eduid", presentedOK))
+	require.NoError(t, c.finalisePresentationVerification(t.Context(), authCtx, "eduid_age", pScope, "eduid", presentedOK))
 
 	authCtxBad := seedAuthCtx(t, c, "sess-array-bad")
 	presentedBad := map[string]any{
@@ -263,7 +253,7 @@ func TestFinalisePresentationVerification_ArrayAllowList(t *testing.T) {
 			"http://www.swamid.se/policy/assurance/al1",
 		},
 	}
-	err := c.finalisePresentationVerification(t.Context(), authCtxBad, pScope, "eduid", presentedBad)
+	err := c.finalisePresentationVerification(t.Context(), authCtxBad, "eduid_age", pScope, "eduid", presentedBad)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not in allow-list")
 }
@@ -278,7 +268,7 @@ func TestFinalisePresentationVerification_WrongVCT(t *testing.T) {
 
 	pScope := model.PresentationScope{
 		From: map[string]model.PresentedCredential{"eduid": {
-			RequiredClaims: map[string][]string{"birthdate": nil},
+			RequiredClaims: model.RequiredClaims{{Path: claimpath.Keys("birthdate")}},
 		}},
 	}
 	presented := map[string]any{
@@ -286,7 +276,7 @@ func TestFinalisePresentationVerification_WrongVCT(t *testing.T) {
 		"birthdate": "1990-01-15",
 	}
 
-	err := c.finalisePresentationVerification(t.Context(), authCtx, pScope, "eduid", presented)
+	err := c.finalisePresentationVerification(t.Context(), authCtx, "eduid_age", pScope, "eduid", presented)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "does not match")
 	assert.Nil(t, authCtx.VerifiedClaims)

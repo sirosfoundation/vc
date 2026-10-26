@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential/primitives"
 
 	"github.com/stretchr/testify/assert"
@@ -14,10 +15,10 @@ import (
 // claim's object and changed the copy.
 func TestApplyDerivations_CopyLeavesItsSourceUnchanged(t *testing.T) {
 	out, err := ApplyDerivations([]primitives.Derivation{
-		{Copy: &primitives.CopyArgs{Input: "identity", Output: "alias"}},
-		{Lowercase: &primitives.LowercaseArgs{Input: "alias.name"}},
-		{Copy: &primitives.CopyArgs{Input: "identity.name", Output: "seen"}},
-	}, map[string]any{"identity": map[string]any{"name": "ALICE"}}, time.Now())
+		{Copy: &primitives.CopyArgs{Input: claimpath.Keys("identity"), Output: claimpath.Keys("alias")}},
+		{Lowercase: &primitives.LowercaseArgs{Input: claimpath.Keys("alias", "name")}},
+		{Copy: &primitives.CopyArgs{Input: claimpath.Keys("identity", "name"), Output: claimpath.Keys("seen")}},
+	}, map[string]any{"identity": map[string]any{"name": "ALICE"}}, time.Now(), nestedShapes)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]any{"name": "alice"}, out["alias"])
 	assert.Equal(t, "ALICE", out["seen"])

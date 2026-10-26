@@ -9,9 +9,9 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"slices"
 
 	"github.com/SUNET/vc/pkg/cache"
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential/primitives"
 	"github.com/SUNET/vc/pkg/model"
 	"github.com/SUNET/vc/pkg/openid4vci"
@@ -22,21 +22,49 @@ import (
 // (openid-4-verifiable-credential-issuance-auxiliary-data.md in
 // sirosfoundation/nym_auth_rulebook).
 
+// derivationSource is the derivations of the data source an issuance
+// uses, with the claims they read and the shape that holds those claims.
+type derivationSource struct {
+	derivations []primitives.Derivation
+	claims      map[string]any
+	shape       claimpath.Shape
+}
+
 // sourceDerivations returns the derivations of the data source this
 // issuance uses, and the claims they read: the verified presented claims
 // for a presentation source, the document data otherwise.
-func (c *Client) sourceDerivations(scope string, authContext *cache.AuthorizationContext, document map[string]any) ([]primitives.Derivation, map[string]any) {
-	if authContext.DataSource == string(model.DataSourcePresentation) {
-		accepted := c.cfg.APIGW.DataSources.Presentation.Scopes[scope].From[authContext.PresentedScope]
-		return accepted.Derivations, authContext.VerifiedClaims
+func (c *Client) sourceDerivations(scope string, authContext *cache.AuthorizationContext, document map[string]any) (derivationSource, error) {
+	src := model.SourceScope{Source: model.DataSourceType(authContext.DataSource), Scope: scope}
+	source := derivationSource{claims: document}
+	if src.Source == model.DataSourcePresentation {
+		src.Presented = authContext.PresentedScope
+		source.derivations = c.cfg.APIGW.DataSources.Presentation.Scopes[scope].From[src.Presented].Derivations
+		source.claims = authContext.VerifiedClaims
+	} else {
+		source.derivations = c.cfg.APIGW.DataSources.DerivationsForSource(scope, src.Source)
 	}
-	return c.cfg.APIGW.DataSources.DerivationsForSource(scope, model.DataSourceType(authContext.DataSource)), document
+	shapes, err := c.cfg.DerivationShapes(src)
+	if err != nil {
+		return derivationSource{}, err
+	}
+	source.shape = shapes.Source
+	return source, nil
+}
+
+// issueAuxiliaryData applies scope's auxiliary_data with the derivations
+// of the data source this issuance uses.
+func (c *Client) issueAuxiliaryData(ctx context.Context, scope string, authContext *cache.AuthorizationContext, document map[string]any, documentData []byte, fromWallet []openid4vci.AuxiliaryDataEntry) ([]byte, []openid4vci.AuxiliaryDataEntry, error) {
+	source, err := c.sourceDerivations(scope, authContext, document)
+	if err != nil {
+		return nil, nil, err
+	}
+	return c.applyAuxiliaryData(ctx, scope, source, documentData, fromWallet)
 }
 
 // applyAuxiliaryData writes the commitments of scope's auxiliary_data into
 // the document data, and returns it re-encoded with the to_wallet entries
 // that carry their openings.
-func (c *Client) applyAuxiliaryData(ctx context.Context, scope string, derivations []primitives.Derivation, sourceClaims map[string]any, documentData []byte, fromWallet []openid4vci.AuxiliaryDataEntry) ([]byte, []openid4vci.AuxiliaryDataEntry, error) {
+func (c *Client) applyAuxiliaryData(ctx context.Context, scope string, source derivationSource, documentData []byte, fromWallet []openid4vci.AuxiliaryDataEntry) ([]byte, []openid4vci.AuxiliaryDataEntry, error) {
 	supported := c.scopeAuxiliaryData(scope)
 	commitments, err := walletCommitments(supported.ToIssuer, fromWallet)
 	if err != nil {
@@ -45,11 +73,11 @@ func (c *Client) applyAuxiliaryData(ctx context.Context, scope string, derivatio
 	if len(supported.ToWallet) == 0 && len(commitments) == 0 {
 		return documentData, nil, nil
 	}
-	doc, err := newCommitmentDocument(c.cfg.GetCredentialMetadata(scope).Format, documentData)
+	doc, err := newCommitmentDocument(c.cfg.GetCredentialMetadata(scope), documentData)
 	if err != nil {
 		return nil, nil, fmt.Errorf("scope %q: %w", scope, err)
 	}
-	toWallet, err := deliverOpenings(ctx, doc, supported.ToWallet, derivations, sourceClaims)
+	toWallet, err := deliverOpenings(ctx, doc, supported.ToWallet, source)
 	if err != nil {
 		return nil, nil, fmt.Errorf("scope %q: %w", scope, err)
 	}
@@ -75,16 +103,16 @@ func (c *Client) scopeAuxiliaryData(scope string) openid4vci.AuxiliaryDataSuppor
 
 // deliverOpenings fulfils each to_wallet entry with the source's
 // hash_commitment derivation, and returns the entries with their openings.
-func deliverOpenings(ctx context.Context, doc *commitmentDocument, entries []openid4vci.AuxiliaryDataEntry, derivations []primitives.Derivation, sourceClaims map[string]any) ([]openid4vci.AuxiliaryDataEntry, error) {
+func deliverOpenings(ctx context.Context, doc *commitmentDocument, entries []openid4vci.AuxiliaryDataEntry, source derivationSource) ([]openid4vci.AuxiliaryDataEntry, error) {
 	delivered := make([]openid4vci.AuxiliaryDataEntry, 0, len(entries))
 	for _, entry := range entries {
-		hc := primitives.HashCommitmentFor(derivations, entry.Path)
+		hc := primitives.HashCommitmentFor(source.derivations, entry.Path)
 		if hc == nil {
-			return nil, fmt.Errorf("no hash_commitment derivation fulfils to_wallet path %q", entry.Path)
+			return nil, fmt.Errorf("no hash_commitment derivation fulfils to_wallet path %s", entry.Path)
 		}
-		opening, err := hc.NewOpening(sourceClaims)
+		opening, err := hc.NewOpening(source.claims, source.shape)
 		if err != nil {
-			return nil, fmt.Errorf("to_wallet path %q: %w", entry.Path, err)
+			return nil, fmt.Errorf("to_wallet path %s: %w", entry.Path, err)
 		}
 		commitment, err := openid4vci.HashCommitment(entry.Alg, opening)
 		if err != nil {
@@ -116,10 +144,9 @@ func writeCommitments(doc *commitmentDocument, commitments []walletCommitment) e
 // commitmentCarrier is how a credential format carries a commitment in
 // its document data.
 type commitmentCarrier struct {
-	// mdoc keys a claim by its element identifier, and carries bytes as
-	// the standard base64 the mso_mdoc signer decodes into a bstr. A
-	// JSON-based credential nests a claim at its path, and its claims
-	// hold text.
+	// mdoc carries bytes as the standard base64 the mso_mdoc signer
+	// decodes into a bstr. The claims of a JSON-based credential hold
+	// text.
 	mdoc bool
 }
 
@@ -148,14 +175,19 @@ func (c commitmentCarrier) claimText(encoding string, commitment []byte) (string
 }
 
 // commitmentDocument is a credential's document data, with the way its
-// format carries a commitment.
+// format carries a commitment and the shape that places its claims.
 type commitmentDocument struct {
 	commitmentCarrier
+	shape  claimpath.Shape
 	claims map[string]any
 }
 
-func newCommitmentDocument(format string, documentData []byte) (*commitmentDocument, error) {
-	carrier, err := commitmentCarrierOf(format)
+func newCommitmentDocument(meta *model.CredentialMetadata, documentData []byte) (*commitmentDocument, error) {
+	carrier, err := commitmentCarrierOf(meta.Format)
+	if err != nil {
+		return nil, err
+	}
+	shape, err := meta.DocumentShape()
 	if err != nil {
 		return nil, err
 	}
@@ -163,47 +195,23 @@ func newCommitmentDocument(format string, documentData []byte) (*commitmentDocum
 	if err != nil {
 		return nil, err
 	}
-	return &commitmentDocument{commitmentCarrier: carrier, claims: claims}, nil
+	return &commitmentDocument{commitmentCarrier: carrier, shape: shape, claims: claims}, nil
 }
 
 // setCommitment writes a commitment at path, in the entry's encoding.
-func (d *commitmentDocument) setCommitment(path []string, encoding string, commitment []byte) error {
+func (d *commitmentDocument) setCommitment(path claimpath.Pointer, encoding string, commitment []byte) error {
 	text, err := d.claimText(encoding, commitment)
 	if err != nil {
-		return fmt.Errorf("path %q: %w", path, err)
+		return fmt.Errorf("path %s: %w", path, err)
 	}
-	parent, key, err := d.parent(path)
+	existing, present, err := d.shape.Get(d.claims, path)
 	if err != nil {
-		return err
+		return fmt.Errorf("path %s: %w", path, err)
 	}
-	if existing, present := parent[key]; present && existing != nil {
-		return fmt.Errorf("the document data already carries a value at %q", path)
+	if present && existing != nil {
+		return fmt.Errorf("the document data already carries a value at %s", path)
 	}
-	parent[key] = text
-	return nil
-}
-
-// parent returns the object that holds the claim at path, and the claim's
-// key in it, creating the objects a nested path passes through.
-func (d *commitmentDocument) parent(path []string) (map[string]any, string, error) {
-	key := path[len(path)-1]
-	if d.mdoc {
-		return d.claims, key, nil
-	}
-	node := d.claims
-	for _, segment := range path[:len(path)-1] {
-		switch child := node[segment].(type) {
-		case map[string]any:
-			node = child
-		case nil:
-			created := map[string]any{}
-			node[segment] = created
-			node = created
-		default:
-			return nil, "", fmt.Errorf("the document data carries no object at %q of %q", segment, path)
-		}
-	}
-	return node, key, nil
+	return d.shape.Set(d.claims, path, text)
 }
 
 // decodeDocumentData reads the document, preserving numbers exactly.
@@ -269,7 +277,7 @@ func walletAuxiliaryData(req *openid4vci.CredentialRequest) ([]openid4vci.Auxili
 
 // walletCommitment is the commitment the wallet sent for a to_issuer entry.
 type walletCommitment struct {
-	path []string
+	path claimpath.Pointer
 	// encoding is how the to_issuer entry's claim represents it.
 	encoding string
 	value    []byte
@@ -289,7 +297,7 @@ func walletCommitments(toIssuer, fromWallet []openid4vci.AuxiliaryDataEntry) ([]
 	}
 	for _, want := range toIssuer {
 		if want.Required && entryLike(fromWallet, want) == nil {
-			return nil, invalidAuxiliaryData(fmt.Sprintf("the entry for %q is required", want.Path))
+			return nil, invalidAuxiliaryData(fmt.Sprintf("the entry for %s is required", want.Path))
 		}
 	}
 	return commitments, nil
@@ -301,13 +309,13 @@ func acceptedCommitment(toIssuer []openid4vci.AuxiliaryDataEntry, entry openid4v
 	want := entryLike(toIssuer, entry)
 	switch {
 	case want == nil:
-		return walletCommitment{}, invalidAuxiliaryData(fmt.Sprintf("to_issuer of this credential lists no entry for %q", entry.Path))
+		return walletCommitment{}, invalidAuxiliaryData(fmt.Sprintf("to_issuer of this credential lists no entry for %s", entry.Path))
 	case entry.Alg != want.Alg:
-		return walletCommitment{}, invalidAuxiliaryData(fmt.Sprintf("the entry for %q must use alg %s", entry.Path, want.Alg))
+		return walletCommitment{}, invalidAuxiliaryData(fmt.Sprintf("the entry for %s must use alg %s", entry.Path, want.Alg))
 	}
 	value, err := base64.RawURLEncoding.DecodeString(entry.Commitment)
 	if err != nil || len(value) != sha256.Size {
-		return walletCommitment{}, invalidAuxiliaryData(fmt.Sprintf("the commitment for %q must be a base64url sha-256 hash", entry.Path))
+		return walletCommitment{}, invalidAuxiliaryData(fmt.Sprintf("the commitment for %s must be a base64url sha-256 hash", entry.Path))
 	}
 	return walletCommitment{path: entry.Path, encoding: want.Encoding, value: value}, nil
 }
@@ -315,7 +323,7 @@ func acceptedCommitment(toIssuer []openid4vci.AuxiliaryDataEntry, entry openid4v
 // entryLike returns the entry of entries with the type and path of like.
 func entryLike(entries []openid4vci.AuxiliaryDataEntry, like openid4vci.AuxiliaryDataEntry) *openid4vci.AuxiliaryDataEntry {
 	for i := range entries {
-		if entries[i].Type == like.Type && slices.Equal(entries[i].Path, like.Path) {
+		if entries[i].Type == like.Type && entries[i].Path.Equal(like.Path) {
 			return &entries[i]
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/SUNET/vc/pkg/claimpath"
 	"github.com/SUNET/vc/pkg/credential/primitives"
 	"github.com/SUNET/vc/pkg/logger"
 	"github.com/SUNET/vc/pkg/mdoc"
@@ -35,9 +36,9 @@ func TestAuxiliaryData(t *testing.T) {
 	secretPath := filepath.Join(t.TempDir(), "nym_auth_seed.key")
 	require.NoError(t, os.WriteFile(secretPath, []byte(base64.RawURLEncoding.EncodeToString(secret)+"\n"), 0o600))
 
-	ssc := []string{"eu.europa.ec.eudi.nym_auth.1", "ssc"}
-	psc := []string{"eu.europa.ec.eudi.nym_auth.1", "psc"}
-	inputs := []string{"issuing_country", "personal_administrative_number"}
+	ssc := claimpath.Keys("eu.europa.ec.eudi.nym_auth.1", "ssc")
+	psc := claimpath.Keys("eu.europa.ec.eudi.nym_auth.1", "psc")
+	inputs := []claimpath.Pointer{claimpath.Keys("issuing_country"), claimpath.Keys("personal_administrative_number")}
 	c := &Client{
 		log: logger.NewSimple("test"),
 		cfg: &model.Cfg{Common: &model.Common{CredentialMetadata: map[string]*model.CredentialMetadata{
@@ -71,7 +72,7 @@ func TestAuxiliaryData(t *testing.T) {
 	document := []byte(`{"birth_date":"2011-06-15"}`)
 	issue := func(pan string, entries []openid4vci.AuxiliaryDataEntry) (map[string]any, []openid4vci.AuxiliaryDataEntry) {
 		source := map[string]any{"issuing_country": "SE", "personal_administrative_number": pan}
-		out, toWallet, err := c.applyAuxiliaryData(t.Context(), "nym_auth", derivations, source, document, entries)
+		out, toWallet, err := c.applyAuxiliaryData(t.Context(), "nym_auth", derivationSource{derivations, source, claimpath.Nested()}, document, entries)
 		require.NoError(t, err)
 		var doc map[string]any
 		require.NoError(t, json.Unmarshal(out, &doc))
@@ -107,14 +108,14 @@ func TestAuxiliaryData(t *testing.T) {
 			e.Commitment = base64.RawURLEncoding.EncodeToString(walletPSC[:31])
 		})},
 		"the path is a to_issuer entry": {"nym_auth", with(func(e *openid4vci.AuxiliaryDataEntry) {
-			e.Path = []string{"eu.europa.ec.eudi.nym_auth.1", "birth_date"}
+			e.Path = claimpath.Keys("eu.europa.ec.eudi.nym_auth.1", "birth_date")
 		})},
 		"the alg is the to_issuer entry's":  {"nym_auth", with(func(e *openid4vci.AuxiliaryDataEntry) { e.Alg = "sha-384" })},
 		"the credential takes the entries":  {"pid", fromWallet},
 		"the wallet sends a required entry": {"psc_required", nil},
 	} {
 		source := map[string]any{"issuing_country": "SE", "personal_administrative_number": "pan-200"}
-		_, _, err = c.applyAuxiliaryData(t.Context(), request.scope, derivations, source, document, request.entries)
+		_, _, err = c.applyAuxiliaryData(t.Context(), request.scope, derivationSource{derivations, source, claimpath.Nested()}, document, request.entries)
 		require.ErrorAs(t, err, &vciErr, rule)
 		assert.Equal(t, openid4vci.ErrInvalidProof, vciErr.Err, rule)
 	}
@@ -142,13 +143,9 @@ func TestAuxiliaryData(t *testing.T) {
 func TestAuxiliaryDataSDJWT(t *testing.T) {
 	secretPath := filepath.Join(t.TempDir(), "secret.key")
 	require.NoError(t, os.WriteFile(secretPath, []byte(base64.RawURLEncoding.EncodeToString([]byte(strings.Repeat("s", 32)))), 0o600))
-	ssc, psc := []string{"commitments", "ssc"}, []string{"commitments", "psc"}
-	always := func(path []string) sdjwtvc.Claim {
-		segments := make([]*string, len(path))
-		for i := range path {
-			segments[i] = &path[i]
-		}
-		return sdjwtvc.Claim{Path: segments, SD: "always"}
+	ssc, psc := claimpath.Keys("commitments", "ssc"), claimpath.Keys("commitments", "psc")
+	always := func(path claimpath.Pointer) sdjwtvc.Claim {
+		return sdjwtvc.Claim{Path: path, SD: "always"}
 	}
 	vctm := &sdjwtvc.VCTM{VCT: "https://example.org/example", Claims: []sdjwtvc.Claim{always(ssc), always(psc)}}
 	c := &Client{log: logger.NewSimple("test"), cfg: &model.Cfg{Common: &model.Common{CredentialMetadata: map[string]*model.CredentialMetadata{
@@ -159,15 +156,15 @@ func TestAuxiliaryDataSDJWT(t *testing.T) {
 	}}}}
 	derivations := []primitives.Derivation{{HashCommitment: &primitives.HashCommitmentArgs{
 		Path:    ssc,
-		Opening: primitives.OpeningArgs{HKDF: &primitives.HKDFOpeningArgs{SecretPath: secretPath, Inputs: []string{"personal_administrative_number"}, Bytes: 16}},
+		Opening: primitives.OpeningArgs{HKDF: &primitives.HKDFOpeningArgs{SecretPath: secretPath, Inputs: []claimpath.Pointer{claimpath.Keys("personal_administrative_number")}, Bytes: 16}},
 	}}}
 	walletPSC := sha256.Sum256([]byte("the wallet's private seed"))
 	fromWallet := []openid4vci.AuxiliaryDataEntry{{
 		Type: "hash_commitment", Alg: "sha-256", Path: psc, Commitment: base64.RawURLEncoding.EncodeToString(walletPSC[:]),
 	}}
 
-	out, toWallet, err := c.applyAuxiliaryData(t.Context(), "example", derivations,
-		map[string]any{"personal_administrative_number": "pan-200"}, []byte(`{"given_name":"Alex"}`), fromWallet)
+	source := derivationSource{derivations, map[string]any{"personal_administrative_number": "pan-200"}, claimpath.Nested()}
+	out, toWallet, err := c.applyAuxiliaryData(t.Context(), "example", source, []byte(`{"given_name":"Alex"}`), fromWallet)
 	require.NoError(t, err)
 	require.Len(t, toWallet, 1)
 	assert.Equal(t, openid4vci.AuxiliaryDataEntry{Type: "hash_commitment", Alg: "sha-256", Path: ssc, Opening: toWallet[0].Opening},

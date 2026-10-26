@@ -16,19 +16,22 @@ import (
 // dotted form of a configuration and its pointer form read as the same
 // claim, written down by hand.
 func TestResolveClaimPaths(t *testing.T) {
-	const ageNS = "org.example.age.1"
+	const nymAuth = "eu.europa.ec.eudi.nym_auth.1"
 	presentation := func(from, claims string) string {
-		return "presentation:\n  scopes:\n    age_mdoc:\n      from_scope: " + from + "\n" + claims
+		return "presentation:\n  scopes:\n    nym_auth:\n      from:\n        " + from + ":\n" + claims
 	}
 	derivations := func(list string) string {
-		return presentation("pid", "      derivations:\n"+list)
+		return presentation("pid", "          derivations:\n"+list)
 	}
 	requiredClaim := func(c *Cfg) claimpath.Pointer {
-		return c.APIGW.DataSources.Presentation.Scopes["age_mdoc"].RequiredClaims[0].Path
+		for _, accepted := range c.APIGW.DataSources.Presentation.Scopes["nym_auth"].From {
+			return accepted.RequiredClaims[0].Path
+		}
+		return claimpath.Pointer{}
 	}
 	derivation := func(i int) func(*Cfg) *primitives.Derivation {
 		return func(c *Cfg) *primitives.Derivation {
-			return &c.APIGW.DataSources.Presentation.Scopes["age_mdoc"].Derivations[i]
+			return &c.APIGW.DataSources.Presentation.Scopes["nym_auth"].From["pid"].Derivations[i]
 		}
 	}
 
@@ -40,22 +43,22 @@ func TestResolveClaimPaths(t *testing.T) {
 	}{
 		{
 			name:    "a claim of a presented JSON-based credential",
-			dotted:  presentation("pid", "      required_claims:\n        address.locality: []\n"),
-			pointer: presentation("pid", "      required_claims:\n        - path: [address, locality]\n"),
+			dotted:  presentation("pid", "          required_claims:\n            address.locality: []\n"),
+			pointer: presentation("pid", "          required_claims:\n            - path: [address, locality]\n"),
 			claim:   requiredClaim,
 			want:    claimpath.Keys("address", "locality"),
 		},
 		{
 			name:    "a qualified claim of a presented mdoc",
-			dotted:  presentation("pid_mdoc", "      required_claims:\n        eu.europa.ec.eudi.pid.1.birth_date: []\n"),
-			pointer: presentation("pid_mdoc", "      required_claims:\n        - path: [eu.europa.ec.eudi.pid.1, birth_date]\n"),
+			dotted:  presentation("pid_mdoc", "          required_claims:\n            eu.europa.ec.eudi.pid.1.birth_date: []\n"),
+			pointer: presentation("pid_mdoc", "          required_claims:\n            - path: [eu.europa.ec.eudi.pid.1, birth_date]\n"),
 			claim:   requiredClaim,
 			want:    claimpath.Keys("eu.europa.ec.eudi.pid.1", "birth_date"),
 		},
 		{
 			name:    "a bare claim of a presented mdoc",
-			dotted:  presentation("pid_mdoc", "      required_claims:\n        given_name: []\n"),
-			pointer: presentation("pid_mdoc", "      required_claims:\n        - path: [org.iso.18013.5.1, given_name]\n"),
+			dotted:  presentation("pid_mdoc", "          required_claims:\n            given_name: []\n"),
+			pointer: presentation("pid_mdoc", "          required_claims:\n            - path: [org.iso.18013.5.1, given_name]\n"),
 			claim:   requiredClaim,
 			want:    claimpath.Keys("org.iso.18013.5.1", "given_name"),
 		},
@@ -68,23 +71,23 @@ func TestResolveClaimPaths(t *testing.T) {
 		},
 		{
 			name:    "an element an mdoc document's MDDL declares",
-			dotted:  derivations("        - trim: {input: birthdate, output: birth_date}\n"),
-			pointer: derivations("        - trim: {input: [birthdate], output: [" + ageNS + ", birth_date]}\n"),
-			claim:   func(c *Cfg) claimpath.Pointer { return derivation(0)(c).Trim.Output },
-			want:    claimpath.Keys(ageNS, "birth_date"),
+			dotted:  derivations("            - copy: {input: birthdate, output: birth_date}\n"),
+			pointer: derivations("            - copy: {input: [birthdate], output: [" + nymAuth + ", birth_date]}\n"),
+			claim:   func(c *Cfg) claimpath.Pointer { return derivation(0)(c).Copy.Output },
+			want:    claimpath.Keys(nymAuth, "birth_date"),
 		},
 		{
 			name:    "a key an mdoc document's MDDL does not declare",
-			dotted:  derivations("        - trim: {input: birthdate, output: a.b}\n"),
-			pointer: derivations("        - trim: {input: [birthdate], output: [a.b]}\n"),
-			claim:   func(c *Cfg) claimpath.Pointer { return derivation(0)(c).Trim.Output },
+			dotted:  derivations("            - copy: {input: birthdate, output: a.b}\n"),
+			pointer: derivations("            - copy: {input: [birthdate], output: [a.b]}\n"),
+			claim:   func(c *Cfg) claimpath.Pointer { return derivation(0)(c).Copy.Output },
 			want:    claimpath.Keys("a.b"),
 		},
 		{
 			name:    "a derivation input an earlier derivation writes",
-			dotted:  derivations("        - trim: {input: birthdate, output: a.b}\n        - trim: {input: a.b, output: birth_date}\n"),
-			pointer: derivations("        - trim: {input: [birthdate], output: [a.b]}\n        - trim: {input: [a.b], output: [" + ageNS + ", birth_date]}\n"),
-			claim:   func(c *Cfg) claimpath.Pointer { return derivation(1)(c).Trim.Input },
+			dotted:  derivations("            - copy: {input: birthdate, output: a.b}\n            - copy: {input: a.b, output: birth_date}\n"),
+			pointer: derivations("            - copy: {input: [birthdate], output: [a.b]}\n            - copy: {input: [a.b], output: [" + nymAuth + ", birth_date]}\n"),
+			claim:   func(c *Cfg) claimpath.Pointer { return derivation(1)(c).Copy.Input },
 			want:    claimpath.Keys("a.b"),
 		},
 	}
@@ -117,8 +120,8 @@ func TestResolveClaimPathsRefusals(t *testing.T) {
 		},
 		{
 			name:     "a derivation input names one claim",
-			refused:  "assertion:\n  scopes:\n    ehic:\n      auth_provider: oidc\n      derivations:\n        - trim: {input: [nationalities, null], output: [nationality]}\n",
-			accepted: "assertion:\n  scopes:\n    ehic:\n      auth_provider: oidc\n      derivations:\n        - trim: {input: [nationalities, 0], output: [nationality]}\n",
+			refused:  "assertion:\n  scopes:\n    ehic:\n      auth_provider: oidc\n      derivations:\n        - copy: {input: [nationalities, null], output: [nationality]}\n",
+			accepted: "assertion:\n  scopes:\n    ehic:\n      auth_provider: oidc\n      derivations:\n        - copy: {input: [nationalities, 0], output: [nationality]}\n",
 		},
 		{
 			name:     "an auth claim names an identity attribute",
@@ -127,8 +130,8 @@ func TestResolveClaimPathsRefusals(t *testing.T) {
 		},
 		{
 			name:     "an input read by index from a presented credential needs an output",
-			refused:  "presentation:\n  scopes:\n    ehic:\n      from_scope: pid\n      derivations:\n        - trim: {input: [nationalities, 1]}\n",
-			accepted: "presentation:\n  scopes:\n    ehic:\n      from_scope: pid\n      derivations:\n        - trim: {input: [nationalities, 1], output: [nationality]}\n",
+			refused:  "presentation:\n  scopes:\n    ehic:\n      from:\n        pid:\n          derivations:\n            - trim: {input: [nationalities, 1]}\n",
+			accepted: "presentation:\n  scopes:\n    ehic:\n      from:\n        pid:\n          derivations:\n            - trim: {input: [nationalities, 1], output: [nationality]}\n",
 		},
 		{
 			name:     "a default names its claim by keys",
@@ -162,7 +165,7 @@ func claimPathsCfg(t *testing.T, dataSources string) *Cfg {
 			"pid":      {Format: "dc+sd-jwt"},
 			"ehic":     {Format: "dc+sd-jwt"},
 			"pid_mdoc": {Format: "mso_mdoc", MDDL: declares("eu.europa.ec.eudi.pid.1", "birth_date", "given_name")},
-			"age_mdoc": {Format: "mso_mdoc", MDDL: declares("org.example.age.1", "birth_date")},
+			"nym_auth": {Format: "mso_mdoc", MDDL: declares("eu.europa.ec.eudi.nym_auth.1", "birth_date")},
 		}},
 		APIGW: &APIGW{DataSources: sources},
 	}

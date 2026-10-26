@@ -28,7 +28,7 @@ func (c *Client) buildPresentationDocument(scope string, pScope model.Presentati
 		return nil, fmt.Errorf("presentation scope %q accepts no %q credential", scope, authCtx.PresentedScope)
 	}
 
-	shapes, err := c.cfg.DerivationShapes(scope, pScope.FromScope)
+	shapes, err := c.cfg.DerivationShapes(model.SourceScope{Source: model.DataSourcePresentation, Scope: scope, Presented: authCtx.PresentedScope})
 	if err != nil {
 		return nil, err
 	}
@@ -37,9 +37,8 @@ func (c *Client) buildPresentationDocument(scope string, pScope model.Presentati
 	// claim that the presented credential already carries (and that no
 	// derivation rewrites) still lands in the issued document. The VCTM
 	// filter below drops anything the target credential does not declare.
-	doc := credential.CloneNestedClaims(authCtx.VerifiedClaims)
-
-	derived, err := credential.ApplyDerivations(accepted.Derivations, authCtx.VerifiedClaims, now)
+	doc := shapes.Source.Processed(authCtx.VerifiedClaims)
+	derived, err := credential.ApplyDerivations(accepted.Derivations, authCtx.VerifiedClaims, now, shapes)
 	if err != nil {
 		return nil, err
 	}

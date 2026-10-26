@@ -56,7 +56,7 @@ func TestInteractionTypeFollowsTheSameSelectorAsAuthorize(t *testing.T) {
 				challengeScope: {
 					AuthProvider: model.AuthProviderOpenID4VP,
 					From: map[string]model.PresentedCredential{
-						challengeAuthScope: {RequiredClaims: map[string][]string{"given_name": nil, "family_name": nil}},
+						challengeAuthScope: {RequiredClaims: model.RequiredClaims{{Path: claimpath.Keys("given_name")}, {Path: claimpath.Keys("family_name")}}},
 					},
 				},
 			}
