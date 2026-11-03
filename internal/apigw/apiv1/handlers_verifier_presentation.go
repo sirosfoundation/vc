@@ -86,8 +86,13 @@ func (c *Client) finalisePresentationVerification(ctx context.Context, authCtx *
 		//
 		// The caller gets the fact and nothing else; an operator gets
 		// the detail from the log, where the session id is.
-		c.log.Error(err, "a presented claim cannot be carried through to issuance",
-			"session_id", authCtx.SessionID)
+		// Info, not Error. The wallet presented something this issuer
+		// cannot carry, which is a refusal and not a fault here - and
+		// the same refusal is reported again at Info by
+		// interactiveAuthorizationFailure, so logging it at Error first
+		// put one wallet-side outcome at two severities.
+		c.log.Info("a presented claim cannot be carried through to issuance",
+			"session_id", authCtx.SessionID, "reason", err.Error())
 		return helpers.NewErrorDetailsWithStatus("unrepresentable_claim",
 			"a presented claim cannot be carried through to issuance", 400)
 	}

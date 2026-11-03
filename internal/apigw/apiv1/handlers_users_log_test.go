@@ -3,21 +3,35 @@ package apiv1
 import (
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 
 	"github.com/SUNET/vc/pkg/cache"
 	"github.com/SUNET/vc/pkg/logger"
+	"github.com/SUNET/vc/pkg/model"
+	"github.com/SUNET/vc/pkg/vcclient"
 )
 
-// The test reads the written log back, because a leak shows only in the
-// rendering.
-func TestAnAuthorizationContextIsNeverLoggedWhole(t *testing.T) {
+// UserLookup is driven for real, against a file logger, because a leak
+// shows only in the rendering - and because a test that re-types the
+// handler's log line asserts nothing about the handler. This one fails if
+// handlers_users.go goes back to logging the whole context, which is the
+// regression it exists for.
+//
+// The call is expected to fail: the context carries no wallet URI and no
+// provider, so UserLookup gets as far as the line under test and then
+// stops. The log is the assertion, not the return value.
+func TestUserLookupNeverLogsTheWholeAuthorizationContext(t *testing.T) {
 	dir := t.TempDir()
 	log, err := logger.New("probe", dir, false)
 	require.NoError(t, err)
+
+	c := newMDocPresentationTestClient(t, log)
+	// UserLookup builds the wallet redirect from this before it reaches
+	// the switch; without it the handler cannot run at all.
+	c.cfg.APIGW = &model.APIGW{PublicURL: "https://apigw.test"}
 
 	secrets := map[string]string{
 		"access token":        "AT-eyJhbGciOiJFUzI1NiJ9",
@@ -29,40 +43,36 @@ func TestAnAuthorizationContextIsNeverLoggedWhole(t *testing.T) {
 		"vp token":            "VP-presented",
 		"a verified claim":    "PAN-198001011234",
 	}
-	ctx := &cache.AuthorizationContext{
+	authCtx := &cache.AuthorizationContext{
 		SessionID:    "sess-1",
+		RequestURI:   "https://example.test/request/1",
 		AccessToken:  secrets["access token"],
 		RefreshToken: secrets["refresh token"],
 		IDToken:      secrets["id token"],
 		Code:         secrets["authorization code"],
 		TXCode:       secrets["tx code"],
 		VPToken:      secrets["vp token"],
-		Token:        &cache.Token{AccessToken: secrets["nested access token"]},
+		Token: &cache.Token{
+			AccessToken: secrets["nested access token"],
+			ExpiresAt:   time.Now().Add(time.Hour).Unix(),
+		},
 		VerifiedClaims: map[string]any{
 			"personal_administrative_number": secrets["a verified claim"],
 		},
 	}
+	require.NoError(t, c.cacheService.AuthContext.Create(t.Context(), authCtx))
 
-	// UserLookup's log line.
-	log.Debug("UserLookup", "session_id", ctx.SessionID, "status", ctx.Status, "scopes", ctx.Scopes)
+	_, _ = c.UserLookup(t.Context(), &vcclient.UserLookupRequest{
+		RequestURI: authCtx.RequestURI,
+	})
 
 	written, err := os.ReadFile(filepath.Join(dir, "probe.log"))
 	require.NoError(t, err)
 	out := string(written)
 
-	require.Contains(t, out, "sess-1", "the session id is the point of the line and must survive")
+	require.Contains(t, out, "sess-1",
+		"the session id is what makes the line useful and must survive the redaction")
 	for what, value := range secrets {
 		require.NotContainsf(t, out, value, "the %s reached the log", what)
 	}
-
-	// The whole context, redacted by AuthorizationContext.MarshalLog.
-	log.Debug("UserLookup", "auth", ctx)
-	after, err := os.ReadFile(filepath.Join(dir, "probe.log"))
-	require.NoError(t, err)
-	for what, value := range secrets {
-		require.NotContainsf(t, string(after), value,
-			"the %s reached the log even through the redacting path", what)
-	}
-	require.True(t, strings.Contains(string(after), "has_access_token"),
-		"the redacted form should still say whether a token existed")
 }

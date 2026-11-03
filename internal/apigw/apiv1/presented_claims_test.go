@@ -1201,6 +1201,36 @@ func TestATimestampAndAFullDateAgreeOnTheDay(t *testing.T) {
 // does not belong, and an identifier rejected for being too large is still an
 // identifier. What an operator needs is WHICH claim and WHY, and both survive
 // - documentObject names the member, and the reason names the constraint.
+// The date refusals say nothing about the date either.
+//
+// These errors take a different route out than documentObject's: the
+// derivation path wraps them into "the presented claims cannot satisfy
+// this scope", which interactiveAuthorizationFailure logs. A date of
+// birth quoted here is a date of birth in the log of every wallet that
+// presents a malformed one.
+func TestARefusedDateDoesNotPutItsValueInTheError(t *testing.T) {
+	const secret = "19901545"
+
+	t.Run("a string that is neither form", func(t *testing.T) {
+		_, err := normaliseFullDate(secret)
+		require.Error(t, err)
+		require.NotContains(t, err.Error(), secret, "the refusal quoted the claim: %s", err.Error())
+	})
+
+	for name, content := range map[string]any{
+		"an epoch past int64":   uint64(math.MaxUint64 - 1),
+		"an epoch that is NaN":  math.NaN(),
+		"an epoch out of range": float64(1e300),
+	} {
+		t.Run(name, func(t *testing.T) {
+			_, err := epochFullDate(content)
+			require.Error(t, err)
+			require.NotRegexp(t, `[0-9]{6,}`, err.Error(),
+				"no run of digits long enough to be the value: %s", err.Error())
+		})
+	}
+}
+
 func TestARefusedClaimDoesNotPutItsValueInTheError(t *testing.T) {
 	tooBig, ok := new(big.Int).SetString("18446744073709551617", 10)
 	require.True(t, ok)

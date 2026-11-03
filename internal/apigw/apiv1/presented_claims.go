@@ -175,7 +175,10 @@ func normaliseFullDate(v any) (string, error) {
 		// wallet happened to choose. One instant, one issued date.
 		return fullDate(d.UTC())
 	}
-	return "", fmt.Errorf("%q is neither a full-date nor a date-time", s)
+	// Without the value: this error reaches the log through the
+	// derivation path's wrap, and the string it would quote is the
+	// holder's claim.
+	return "", errors.New("the value is neither a full-date nor a date-time")
 }
 
 // epochTime returns the UTC instant a CBOR tag 1 carries, if v is one.
@@ -246,18 +249,18 @@ func epochFullDate(content any) (string, error) {
 	switch n := content.(type) {
 	case uint64:
 		if n > math.MaxInt64 {
-			return "", fmt.Errorf("epoch %d is beyond the representable range", n)
+			return "", errors.New("the epoch is beyond the representable range")
 		}
 		return fullDate(time.Unix(int64(n), 0).UTC())
 	case int64:
 		return fullDate(time.Unix(n, 0).UTC())
 	case float64:
 		if math.IsNaN(n) || math.IsInf(n, 0) {
-			return "", fmt.Errorf("epoch %v is not a number", n)
+			return "", errors.New("the epoch is not a number")
 		}
 		seconds := math.Floor(n)
 		if seconds > math.MaxInt64 || seconds < math.MinInt64 {
-			return "", fmt.Errorf("epoch %v is beyond the representable range", n)
+			return "", errors.New("the epoch is beyond the representable range")
 		}
 		return fullDate(time.Unix(int64(seconds), 0).UTC())
 	}

@@ -83,12 +83,22 @@ func AgeOverThresholds(birthdate string, now time.Time, thresholds []int) (map[s
 	if now.IsZero() {
 		now = time.Now()
 	}
+	// Neither refusal names the date, and the parse error is dropped
+	// rather than wrapped - time.Parse quotes the input it failed on, so
+	// %w would carry the value through the message that omits it.
+	//
+	// The birthdate is the holder's. This error is wrapped by the
+	// presentation path into "the presented claims cannot satisfy this
+	// scope" and logged by interactiveAuthorizationFailure, so a value
+	// here is a date of birth in the log of every wallet that presents a
+	// malformed one. What an operator needs is which claim and which
+	// session, and the session id is already on that line.
 	bd, err := time.Parse("2006-01-02", birthdate)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid birthdate %q: %w", ErrInvalidClaimInput, birthdate, err)
+		return nil, fmt.Errorf("%w: the birthdate is not a full-date (YYYY-MM-DD)", ErrInvalidClaimInput)
 	}
 	if bd.After(now) {
-		return nil, fmt.Errorf("%w: birthdate %q is in the future", ErrInvalidClaimInput, birthdate)
+		return nil, fmt.Errorf("%w: the birthdate is in the future", ErrInvalidClaimInput)
 	}
 	age := now.Year() - bd.Year()
 	ageThisYear := age

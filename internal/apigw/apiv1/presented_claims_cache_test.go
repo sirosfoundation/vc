@@ -115,16 +115,7 @@ func TestAnUnrepresentableTagIsRefusedBeforeStorage(t *testing.T) {
 
 // finalisePresentationVerification persists only storable claims.
 func TestFinalisePresentationVerificationStoresOnlyStorableClaims(t *testing.T) {
-	c := &Client{
-		log: logger.NewSimple("test"),
-		cfg: &model.Cfg{Common: &model.Common{CredentialMetadata: map[string]*model.CredentialMetadata{
-			"pid_mdoc": {Format: openid4vp.FormatMsoMdoc, Doctype: "eu.europa.ec.eudi.pid.1"},
-		}}},
-		cacheService: &apigwcache.Service{
-			AuthContext: apigwcache.NewTestMemoryStore(10 * time.Minute),
-			Document:    apigwcache.NewTestMemoryCache[map[string]*model.CompleteDocument](10 * time.Minute),
-		},
-	}
+	c := newMDocPresentationTestClient(t, nil)
 	authCtx := &pkgcache.AuthorizationContext{SessionID: "sess-mdoc"}
 	require.NoError(t, c.cacheService.AuthContext.Create(t.Context(), authCtx))
 
@@ -161,16 +152,7 @@ func TestFinalisePresentationVerificationStoresOnlyStorableClaims(t *testing.T) 
 // to the caller over HTTP, from the one function whose job is keeping
 // claims where they belong.
 func TestTheUnrepresentableClaimRefusalCarriesNoClaimValue(t *testing.T) {
-	c := &Client{
-		log: logger.NewSimple("test"),
-		cfg: &model.Cfg{Common: &model.Common{CredentialMetadata: map[string]*model.CredentialMetadata{
-			"pid_mdoc": {Format: openid4vp.FormatMsoMdoc, Doctype: "eu.europa.ec.eudi.pid.1"},
-		}}},
-		cacheService: &apigwcache.Service{
-			AuthContext: apigwcache.NewTestMemoryStore(10 * time.Minute),
-			Document:    apigwcache.NewTestMemoryCache[map[string]*model.CompleteDocument](10 * time.Minute),
-		},
-	}
+	c := newMDocPresentationTestClient(t, nil)
 	authCtx := &pkgcache.AuthorizationContext{SessionID: "sess-leak"}
 	require.NoError(t, c.cacheService.AuthContext.Create(t.Context(), authCtx))
 
@@ -193,4 +175,24 @@ func TestTheUnrepresentableClaimRefusalCarriesNoClaimValue(t *testing.T) {
 	assert.NotContainsf(t, err.Error(), secret,
 		"the refusal returned the holder's claim to the caller: %v", err)
 	assert.Contains(t, err.Error(), "cannot be carried through to issuance")
+}
+
+// newMDocPresentationTestClient builds a Client over in-memory caches
+// with the mdoc PID scope these tests present against. A nil log gets the simple
+// one; a test that reads its own log back passes its own.
+func newMDocPresentationTestClient(t *testing.T, log *logger.Log) *Client {
+	t.Helper()
+	if log == nil {
+		log = logger.NewSimple("test")
+	}
+	return &Client{
+		log: log,
+		cfg: &model.Cfg{Common: &model.Common{CredentialMetadata: map[string]*model.CredentialMetadata{
+			"pid_mdoc": {Format: openid4vp.FormatMsoMdoc, Doctype: "eu.europa.ec.eudi.pid.1"},
+		}}},
+		cacheService: &apigwcache.Service{
+			AuthContext: apigwcache.NewTestMemoryStore(10 * time.Minute),
+			Document:    apigwcache.NewTestMemoryCache[map[string]*model.CompleteDocument](10 * time.Minute),
+		},
+	}
 }
