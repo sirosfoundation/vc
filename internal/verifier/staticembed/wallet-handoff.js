@@ -73,6 +73,8 @@ export async function handOffToWallet(url, endpoint, preference, env) {
         return;
     }
 
+    // Try to signal same-device flow and navigate to wallet, otherwise open wallet in new tab
+    // and keep verifier page open. The alternative method may blocked by pop-up detectors.
     try {
         const res = await env.fetch(endpoint, {
             method: "POST",
